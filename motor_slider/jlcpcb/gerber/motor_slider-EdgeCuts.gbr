@@ -1,0 +1,23 @@
+%TF.GenerationSoftware,KiCad,Pcbnew,10.0.3*%
+%TF.CreationDate,2026-06-03T18:53:55+08:00*%
+%TF.ProjectId,motor_slider,6d6f746f-725f-4736-9c69-6465722e6b69,rev?*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Profile,NP*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by KiCad (PCBNEW 10.0.3) date 2026-06-03 18:53:55*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+%TA.AperFunction,Profile*%
+%ADD10C,0.050000*%
+%TD*%
+G04 APERTURE END LIST*
+D10*
+X68300000Y-45600000D02*
+X128300000Y-45600000D01*
+X128300000Y-92600000D01*
+X68300000Y-92600000D01*
+X68300000Y-45600000D01*
+M02*
