@@ -10,40 +10,34 @@
  * microcontroller manufactured by Nanjing Qinheng Microelectronics.
  *******************************************************************************/
 
-/*
- *@Note
- *USART Print debugging routine:
- *USART1_Tx(PA9).
- *This example demonstrates using USART1(PA9) as a print debug port output.
- *
- */
-
 #include "debug.h"
+#include "usbd.h"
+#include "usb/usb_impl.h"
+#include "tick.h"
 
-/* Global typedef */
+uint32_t t;
 
-/* Global define */
-
-/* Global Variable */
-
-/*********************************************************************
- * @fn      main
- *
- * @brief   Main program.
- *
- * @return  none
- */
 int main(void)
 {
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
     SystemCoreClockUpdate();
-    Delay_Init();
-    USART_Printf_Init(115200);
-    printf("SystemClk:%d\r\n", SystemCoreClock);
-    printf( "ChipID:%08x\r\n", DBGMCU_GetCHIPID() );
-    printf("This is printf example\r\n");
+    Tick_Init();
 
-    while(1)
+    printf("SystemClk:%d\r\n", SystemCoreClock);
+    printf("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
+
+    /* Init USB HID device */
+    HID_Init();
+    Usbd_Init();
+    Usbd_Connect();
+    printf("USB HID ready\r\n");
+
+    t = Tick_Get();
+    while (1)
     {
+        if (Tick_Get() - t > 1000) {
+            t = Tick_Get();
+            printf("test\n");
+        }
     }
 }

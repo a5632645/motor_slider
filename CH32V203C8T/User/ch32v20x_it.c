@@ -10,9 +10,12 @@
 * microcontroller manufactured by Nanjing Qinheng Microelectronics.
 *******************************************************************************/
 #include "ch32v20x_it.h"
+#include "usb/usb_impl.h"
+#include "tick.h"
 
 void NMI_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void SysTick_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 /*********************************************************************
  * @fn      NMI_Handler
@@ -43,4 +46,17 @@ void HardFault_Handler(void)
   }
 }
 
-
+/*********************************************************************
+ * @fn      SysTick_Handler
+ *
+ * @brief   1ms tick interrupt. Increments tick counter and flushes
+ *          buffered HID data to USB.
+ *
+ * @return  none
+ */
+void SysTick_Handler(void)
+{
+  SysTick->SR = 0;
+  Tick_Increment();
+  HID_Flush();
+}

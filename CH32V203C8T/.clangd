@@ -1,0 +1,11 @@
+CompileFlags:
+  Remove: [
+    -march=*, 
+    -mabi=*, 
+    -msmall-data-limit=*, 
+    -msave-restore
+  ]
+  Add: [
+    --target=riscv32-unknown-elf,
+    -march=rv32imac
+  ]
