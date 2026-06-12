@@ -6,6 +6,7 @@
 #include "ch32v20x_rcc.h"
 #include "ch32v20x_dma.h"
 #include "ch32v20x_misc.h"
+#include "usb/usb_impl.h"
 
 /* ADC DMA 缓冲区 */
 __attribute__((aligned(4)))
@@ -446,4 +447,24 @@ void Motor_StopAll(void)
 bool Motor_IsAdcReady(void)
 {
     return motor_adc_ready_;
+}
+
+/*********************************************************************
+ * @fn      Motor_GetStatus
+ *
+ * @brief   导出 8 路电机状态，供 HID1 上报使用
+ *
+ * @param   adc    输出当前 ADC 值
+ * @param   target 输出目标 ADC 值
+ * @param   duty   输出当前占空比
+ *
+ * @return  none
+ */
+void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8])
+{
+    for (int i = 0; i < MOTOR_COUNT; i++) {
+        adc[i]    = motor_states_[i].current_adc_;
+        target[i] = motor_states_[i].target_adc_;
+        duty[i]   = motor_states_[i].duty_;
+    }
 }

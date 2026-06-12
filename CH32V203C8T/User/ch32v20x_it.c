@@ -59,6 +59,5 @@ void SysTick_Handler(void)
 {
   SysTick->SR = 0;
   Tick_Increment();
-  Motor_StartAdcConversion();
   HID_Flush();
 }

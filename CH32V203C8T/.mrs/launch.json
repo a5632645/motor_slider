@@ -22,7 +22,7 @@
 				"enableNoZeroWaitingAreaFlash": false
 			},
 			"gdbCfg": {
-				"executable": "c:/MounRiver/MounRiver_Studio2/resources/app/resources/win32/components/WCH/Toolchain/RISC-V Embedded GCC12/bin/riscv-wch-elf-gdb.exe",
+				"executable": "c:/MounRiver/MounRiver_Studio2/resources/app/resources/win32/components/WCH/Toolchain/RISC-V Embedded GCC15/bin/riscv32-wch-elf-gdb.exe",
 				"commands": [
 					"set mem inaccessible-by-default off",
 					"set architecture riscv:rv32",

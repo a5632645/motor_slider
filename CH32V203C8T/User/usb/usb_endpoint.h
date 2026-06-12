@@ -8,12 +8,6 @@ enum UsbEndpointType {
     kUsbEndpointType_Iso
 };
 
-enum UsbEndpointNumber {
-    kUsbEndpoint_Control = 0,
-    kUsbEndpoint_HidIn,
-    kUsbEndpoint_Hid1In = 2,
-};
-
 struct UsbEndpoint {
     uint32_t transfer_remain;
     uint32_t transfer_count;

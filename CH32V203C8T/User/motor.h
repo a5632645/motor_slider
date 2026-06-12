@@ -88,3 +88,11 @@ void Motor_StopAll(void);
  * @return true 就绪, false 忙
  */
 bool Motor_IsAdcReady(void);
+
+/**
+ * @brief 获取 8 路电机当前状态
+ * @param adc    输出缓冲区 (8), 接收当前 ADC 值
+ * @param target 输出缓冲区 (8), 接收目标 ADC 值
+ * @param duty   输出缓冲区 (8), 接收当前占空比
+ */
+void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8]);

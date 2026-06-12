@@ -19,7 +19,7 @@ tpusb::Device{
     64,         // bMaxPacketSize0
     0x1A86,     // idVendor (WCH)
     0x0002,     // idProduct
-    0x0000,     // bcdDevice
+    0x0001,     // bcdDevice
     1,          // iManufacturer
     2,          // iProduct
     3,          // iSerialNumber
@@ -103,8 +103,8 @@ tpusb::Config{
         },
         tpusb::Endpoint{
             tpusb::InterruptInitPack{
-                .address = HID_IN_EP_ADDRESS,
-                .max_pack_size = HID_IN_EP_MPSIZE,
+                .address = kHidEpAddr_In,
+                .max_pack_size = kHidEpMpsize,
                 .interval = 1
             }
         }
@@ -130,16 +130,16 @@ tpusb::Config{
         },
         tpusb::Endpoint{
             tpusb::InterruptInitPack{
-                .address = HID1_IN_EP_ADDRESS,
-                .max_pack_size = HID1_EP_MPSIZE,
-                .interval = 1
+                .address = kHid1EpAddr_In,
+                .max_pack_size = kHid1EpMpsize,
+                .interval = 4
             }
         },
         tpusb::Endpoint{
             tpusb::InterruptInitPack{
-                .address = HID1_OUT_EP_ADDRESS,
-                .max_pack_size = HID1_EP_MPSIZE,
-                .interval = 1
+                .address = kHid1EpAddr_Out,
+                .max_pack_size = kHid1EpMpsize,
+                .interval = 4
             }
         }
     }
