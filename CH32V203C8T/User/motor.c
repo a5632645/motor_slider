@@ -13,7 +13,7 @@ volatile uint16_t motor_adc_dma_buf_[MOTOR_COUNT];
 volatile bool motor_adc_ready_;
 
 /* 电机状态数组 */
-MotorState motor_states_[MOTOR_COUNT];
+struct MotorState motor_states_[MOTOR_COUNT];
 
 /*********************************************************************
  * @fn      Motor_InitPwm
@@ -271,7 +271,7 @@ void Motor_StartAdcConversion(void)
  * @note    电机 1~2, 4~8 使用硬件 PWM 定时器
  *          电机 3 使用 GPIO 软件控制
  */
-void Motor_SetPwm(uint8_t ch, MotorDir dir, uint16_t duty)
+void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty)
 {
     if (duty > 999) duty = 999;
 
@@ -434,4 +434,16 @@ void Motor_StopAll(void)
         Motor_SetTarget(i, motor_states_[i].current_adc_);
         Motor_SetPwm(i, kMotorDir_Stop, 0);
     }
+}
+
+/*********************************************************************
+ * @fn      Motor_IsAdcReady
+ *
+ * @brief   检查 ADC 数据是否就绪
+ *
+ * @return  true 就绪, false 忙
+ */
+bool Motor_IsAdcReady(void)
+{
+    return motor_adc_ready_;
 }

@@ -39,7 +39,7 @@ int main(void)
 
     while (1)
     {
-        if (motor_adc_ready_) {
+        if (Motor_IsAdcReady()) {
             Motor_RunControlLoop();
         }
         HID1_ProcessCommand();

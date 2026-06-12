@@ -19,12 +19,12 @@
 /**
  * @brief 电机方向 / 制动模式
  */
-typedef enum {
+enum MotorDir {
     kMotorDir_Stop   = 0,  /* IN1=0, IN2=0 (coast) */
     kMotorDir_Forward,     /* IN1=PWM, IN2=0 */
     kMotorDir_Reverse,     /* IN1=0, IN2=PWM */
     kMotorDir_Brake,       /* IN1=1, IN2=1 */
-} MotorDir;
+};
 
 /**
  * @brief 初始化所有 PWM 定时器 (TIM1~TIM4) 和电机 3 GPIO
@@ -37,7 +37,7 @@ void Motor_InitPwm(void);
  * @param dir  方向
  * @param duty 占空比 (0~999)
  */
-void Motor_SetPwm(uint8_t ch, MotorDir dir, uint16_t duty);
+void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty);
 
 /**
  * @brief 初始化 ADC1 (常规组 scan 8通道) + DMA1 通道 1
@@ -50,30 +50,15 @@ void Motor_InitAdc(void);
 void Motor_StartAdcConversion(void);
 
 /**
- * @brief ADC DMA 缓冲区，由 DMA 完成中断写入
- */
-extern volatile uint16_t motor_adc_dma_buf_[MOTOR_COUNT];
-
-/**
- * @brief ADC 数据就绪标志
- */
-extern volatile bool motor_adc_ready_;
-
-/**
  * @brief 电机运动状态
  */
-typedef struct {
+struct MotorState {
     uint16_t target_adc_;    /* 目标位置 (0~4095) */
     uint16_t current_adc_;   /* 当前位置 (0~4095) */
-    MotorDir dir_;           /* 当前方向 */
+    enum MotorDir dir_;      /* 当前方向 */
     uint16_t duty_;          /* 当前占空比 */
-    PidCtx pid_;             /* PID 控制器 */
-} MotorState;
-
-/**
- * @brief 电机全局状态数组
- */
-extern MotorState motor_states_[MOTOR_COUNT];
+    struct PidCtx pid_;      /* PID 控制器 */
+};
 
 /**
  * @brief 初始化电机控制状态
@@ -97,3 +82,9 @@ void Motor_SetTarget(uint8_t ch, uint16_t target_adc);
  * @brief 停止所有电机
  */
 void Motor_StopAll(void);
+
+/**
+ * @brief 检查 ADC 数据是否就绪
+ * @return true 就绪, false 忙
+ */
+bool Motor_IsAdcReady(void);
