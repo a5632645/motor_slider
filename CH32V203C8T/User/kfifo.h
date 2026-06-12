@@ -7,7 +7,7 @@ struct Kfifo {
     uint32_t wpos;
     uint32_t rpos;
     uint32_t mask;
-    uint8_t* data;
+    uint8_t data[];
 };
 
 static inline uint32_t Kfifo_Size(struct Kfifo* f) {

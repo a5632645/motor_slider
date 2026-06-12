@@ -9,10 +9,14 @@
 // --------------------------------------------------------------------------------
 // FIFO buffer
 // --------------------------------------------------------------------------------
-#define HID_FIFO_MASK 0x1FF  /* 512 bytes, power of 2 */
+#define HID_FIFO_SIZE 512
 
-static uint8_t hid_fifo_data[HID_FIFO_MASK + 1];
-static struct Kfifo hid_fifo;
+static struct {
+    struct Kfifo fifo;
+    uint8_t buf[HID_FIFO_SIZE];
+} hid_fifo_ = {
+    .fifo.mask = HID_FIFO_SIZE - 1,
+};
 
 /* 64-byte HID report buffer (must be 4-byte aligned for DMA) */
 __attribute__((aligned(4)))
@@ -123,7 +127,7 @@ static void _HidInHandler(void)
     hid_tx_busy = false;
 
     /* Try to send next packet if data available */
-    uint32_t available = Kfifo_Size(&hid_fifo);
+    uint32_t available = Kfifo_Size(&hid_fifo_.fifo);
     if (available > 0) {
         uint32_t to_read = (available > 63) ? 63 : available;
         uint32_t total = 0;
@@ -131,12 +135,12 @@ static void _HidInHandler(void)
         /* Read from kfifo (may wrap around ring buffer) */
         while (total < to_read) {
             uint32_t chunk;
-            uint8_t* src = Kfifo_ContinueReadBegin(&hid_fifo, &chunk);
+            uint8_t* src = Kfifo_ContinueReadBegin(&hid_fifo_.fifo, &chunk);
             uint32_t need = to_read - total;
             if (chunk > need) chunk = need;
             if (chunk == 0) break;
             memcpy(hid_report_buf + 1 + total, src, chunk);
-            Kfifo_ContinueReadEnd(&hid_fifo, chunk);
+            Kfifo_ContinueReadEnd(&hid_fifo_.fifo, chunk);
             total += chunk;
         }
 
@@ -188,24 +192,22 @@ bool HID_IsConnected(void)
 }
 
 void HID_Init(void) {
-    hid_fifo.wpos = 0;
-    hid_fifo.rpos = 0;
-    hid_fifo.mask = HID_FIFO_MASK;
-    hid_fifo.data = hid_fifo_data;
+    hid_fifo_.fifo.wpos = 0;
+    hid_fifo_.fifo.rpos = 0;
     hid_tx_busy = false;
     hid_idle = 0;
 }
 
 uint32_t HID_Write(const uint8_t* data, uint32_t len) {
-    return Kfifo_TryPush(&hid_fifo, data, len);
+    return Kfifo_TryPush(&hid_fifo_.fifo, data, len);
 }
 
 bool HID_CanWrite(void) {
-    return Kfifo_FreeSpace(&hid_fifo) >= 64;
+    return Kfifo_FreeSpace(&hid_fifo_.fifo) >= 64;
 }
 
 void HID_Flush(void) {
-    if (!hid_tx_busy && Kfifo_Size(&hid_fifo) > 0) {
+    if (!hid_tx_busy && Kfifo_Size(&hid_fifo_.fifo) > 0) {
         _HidInHandler();
     }
 }
