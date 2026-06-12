@@ -5,11 +5,12 @@
 #include "usb_desc.h"
 #include "usb_hardware.h"
 #include "kfifo.h"
+#include "config.h"
+#include "motor.h"
 
 // --------------------------------------------------------------------------------
 // FIFO buffer
 // --------------------------------------------------------------------------------
-#define HID_FIFO_SIZE 512
 
 static struct {
     struct Kfifo fifo;
@@ -34,12 +35,12 @@ static volatile uint32_t hid1_rx_len_;
 static volatile bool hid1_rx_pending_;
 static bool hid1_tx_busy_;
 
-#warning todo: 电机控制 HID1 命令协议
 /*
- * byte 0: 命令 ID
- *   0x01: 设置目标位置 (bytes 1-16: 8路目标值 × 2字节 LE)
- *   0x02: 读取状态
- *   0x03: 停止所有电机
+ * HID1 OUT 报告格式 (64 字节):
+ *   byte 0:  幻影 Report ID = 0x00 (hidapi 要求)
+ *   byte 1:  命令 ID
+ *     0x01:  设置目标位置 (bytes 2-17: 8路目标值 × uint16 LE)
+ *     0x03:  停止所有电机
  */
 
 // --------------------------------------------------------------------------------
@@ -53,7 +54,7 @@ void UsbImpl_InitAndOpenEndpoints() {
     USBFSD->UEP1_TX_CTRL = USBFS_UEP_T_RES_NAK;
 
     /* EP2: HID1 IN (TX) — 初始 NAK, HID1_SendStatus 武装 */
-    /* EP3: HID1 OUT (RX) — 初始 ACK, DMA 直达 hid1_rx_buf_ */
+    /* EP3: HID1 OUT (RX) — 初始 ACK, 消费后由 HID1_Read 重新武装 */
     USBFSD->UEP2_3_MOD = USBFS_UEP2_TX_EN | USBFS_UEP3_RX_EN;
     USBFSD->UEP2_DMA = (uint32_t)hid1_report_buf_;
     USBFSD->UEP2_TX_LEN = 0;
@@ -205,11 +206,11 @@ void UsbImpl_EpInComplete(uint8_t ep_num) {
 
 void UsbImpl_EpOutComplete(uint8_t ep_num, uint16_t count) {
     if (ep_num == 3) {
-        /* HID1 OUT via EP3 — 数据已由 DMA 写入 hid1_rx_buf_ */
+        /* 阻挡型: 置 pending + 设 NAK, HID1_Read 消费后重新 ACK */
         hid1_rx_len_ = (count < kHid1EpMpsize) ? count : kHid1EpMpsize;
         hid1_rx_pending_ = true;
         USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK)
-                              | USBFS_UEP_R_RES_ACK;
+                              | USBFS_UEP_R_RES_NAK;
     }
 }
 
@@ -227,6 +228,9 @@ bool HID1_Read(uint8_t* buf, uint32_t* len)
     memcpy(buf, hid1_rx_buf_, cpy);
     if (len) *len = cpy;
     hid1_rx_pending_ = false;
+    /* 重新武装 EP3 RX — 阻挡解除, 接收下一帧 */
+    USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK)
+                          | USBFS_UEP_R_RES_ACK;
     return true;
 }
 
@@ -237,8 +241,27 @@ void HID1_ProcessCommand(void)
     if (!HID1_Read(buf, &len)) return;
     if (len == 0) return;
 
-    /* 由具体应用处理 */
-    /* buf[0] = 命令 ID */
+    /* buf[0] = 0x00 (幻影 Report ID), 命令从 buf[1] 开始 */
+    switch (buf[0]) {
+    case 0x01: /* 设置目标位置 */
+        if (len >= 18) {
+            printf("[HID1] 设置目标:");
+            for (int i = 0; i < 8; i++) {
+                uint16_t target = (uint16_t)buf[1 + i*2]
+                                | (uint16_t)(buf[1 + i*2 + 1] << 8);
+                Motor_SetTarget((uint8_t)i, target);
+                printf(" CH%d=%d", i + 1, target);
+            }
+            printf("\r\n");
+        }
+        break;
+    case 0x03: /* 停止所有电机 */
+        Motor_StopAll();
+        printf("[HID1] 停止所有电机\r\n");
+        break;
+    default:
+        break;
+    }
 }
 
 void UsbImpl_StallEndpoint(uint8_t address) {
@@ -281,12 +304,12 @@ void HID_Flush(void) {
 // --------------------------------------------------------------------------------
 // HID1 Status Reporting
 // --------------------------------------------------------------------------------
-void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8])
+void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8], uint8_t active_flags)
 {
     uint8_t* buf = hid1_report_buf_;
 
     buf[HID1_STATUS_FLAGS] = 0x01;  /* running */
-    buf[HID1_RSV] = 0;
+    buf[HID1_ACTIVE_FLAGS] = active_flags;
 
     for (int i = 0; i < 8; i++) {
         buf[HID1_ADC(i)]     = (uint8_t)(adc[i] & 0xFF);

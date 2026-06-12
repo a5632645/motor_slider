@@ -1,4 +1,5 @@
 #include "pid.h"
+#include "config.h"
 
 /*********************************************************************
  * @fn      Pid_Init
@@ -19,9 +20,9 @@ void Pid_Init(struct PidCtx *pid, float kp, float ki, float kd)
     pid->kd = kd;
     pid->integral_ = 0.0f;
     pid->prev_error_ = 0.0f;
-    pid->output_min_ = -999.0f;
-    pid->output_max_ = 999.0f;
-    pid->integral_limit_ = 500.0f;
+    pid->output_min_ = PID_OUTPUT_MIN;
+    pid->output_max_ = PID_OUTPUT_MAX;
+    pid->integral_limit_ = PID_INTEGRAL_LIMIT;
 }
 
 /*********************************************************************

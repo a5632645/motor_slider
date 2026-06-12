@@ -28,7 +28,7 @@ except ImportError:
 
 try:
     from PyQt6.QtCore import (
-        Qt, QThread, pyqtSignal, QTimer, QMutex, QPointF
+        Qt, QThread, pyqtSignal, QTimer, QMutex, QMutexLocker, QPointF
     )
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -57,6 +57,7 @@ MOTOR_COUNT = 8
 # 报告格式偏移 (固件 HID1_ADC(i) / HID1_TARGET(i) / HID1_DUTY(i))
 OFFSET_STATUS = 0
 OFFSET_RSV     = 1
+OFFSET_ACTIVE_FLAGS = 1   # uint8, 每路 1 bit active
 OFFSET_ADC     = 2       # uint16 LE × 8,  偏移 2～17
 OFFSET_TARGET  = 18      # uint16 LE × 8,  偏移 18～33
 OFFSET_DUTY    = 34      # uint16 LE × 8,  偏移 34～49
@@ -78,6 +79,7 @@ class MotorChannelData:
 class StatusReport:
     """解析后的 HID1 状态报告"""
     running: bool = False
+    active_flags: int = 0
     channels: List[MotorChannelData] = field(default_factory=list)
 
     @classmethod
@@ -88,6 +90,7 @@ class StatusReport:
 
         result = cls()
         result.running = bool(report[OFFSET_STATUS] & 0x01)
+        result.active_flags = report[OFFSET_ACTIVE_FLAGS]
 
         for i in range(MOTOR_COUNT):
             offs_adc = OFFSET_ADC + i * 2
@@ -121,6 +124,21 @@ class HidWorker(QThread):
         self._running = False
         self._device: Optional[hid.device] = None
         self._mutex = QMutex()
+
+    def send_targets(self, targets):
+        """通过 HID1 OUT 发送 8 路目标值 (线程安全)"""
+        report = bytearray(65)
+        report[0] = 0x00   # 幻影 Report ID (hidapi 要求, 无 0x85 时必须)
+        report[1] = 0x01   # 命令 ID: 设置目标
+        for i in range(8):
+            report[2 + i*2]     = targets[i] & 0xFF
+            report[2 + i*2 + 1] = (targets[i] >> 8) & 0xFF
+        with QMutexLocker(self._mutex):
+            if self._device is not None:
+                try:
+                    self._device.write(bytes(report))
+                except Exception:
+                    pass
 
     def run(self):
         self._running = True
@@ -347,6 +365,8 @@ class AdcIndicator(QWidget):
 class PotWidget(QWidget):
     """单个电位器控件: 可拖动 Slider (目标) + 竖线指示器 (ADC) + PWM 数字"""
 
+    target_changed = pyqtSignal(int, int)  # (channel, value)
+
     def __init__(self, channel: int, parent=None):
         super().__init__(parent)
         self._channel = channel  # 0-based
@@ -401,8 +421,9 @@ class PotWidget(QWidget):
         self._value_label.setText(f"ADC:{adc}  PWM:{duty}")
 
     def _on_slider_changed(self, value: int):
-        """Slider 拖动时的本地更新 (暂不发送 HID1)"""
+        """Slider 拖动 -> 更新本地目标 + 通知主窗口发送 HID1"""
         self._target = value
+        self.target_changed.emit(self._channel, value)
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +439,7 @@ class MainWindow(QMainWindow):
         self._last_fps_time = time.monotonic()
         self._latest_report: Optional[StatusReport] = None
         self._pots: List[PotWidget] = []
+        self._current_targets = [2048] * 8
 
         self._init_ui()
         self._connect_signals()
@@ -537,6 +559,9 @@ class MainWindow(QMainWindow):
         self._debug_worker.connected.connect(self._on_hid0_connected)
         self._debug_worker.disconnected.connect(self._on_hid0_disconnected)
         self._debug_worker.error_occurred.connect(self._on_error)
+        # PotWidget Slider -> HID1 OUT
+        for pot in self._pots:
+            pot.target_changed.connect(self._on_pot_target_changed)
 
     def _on_hid1_connected(self):
         self._conn_hid1_label.setText("HID1:●")
@@ -584,6 +609,12 @@ class MainWindow(QMainWindow):
 
     def _on_debug_text(self, text: str):
         self._console.appendPlainText(text)
+
+    def _on_pot_target_changed(self, channel: int, value: int):
+        """Slider 拖动 -> 更新目标列表 -> 发送 HID1 OUT"""
+        if 0 <= channel < 8:
+            self._current_targets[channel] = value
+            self._worker.send_targets(self._current_targets)
 
     def _on_data(self, report: StatusReport):
         self._latest_report = report

@@ -58,6 +58,8 @@ struct MotorState {
     enum MotorDir dir_;      /* 当前方向 */
     uint16_t duty_;          /* 当前占空比 */
     struct PidCtx pid_;      /* PID 控制器 */
+    bool active_;            /* true=正在闭环寻找目标 */
+    uint16_t timeout_;       /* 超时计数，递减到0停止 */
 };
 
 /**
@@ -91,8 +93,9 @@ bool Motor_IsAdcReady(void);
 
 /**
  * @brief 获取 8 路电机当前状态
- * @param adc    输出缓冲区 (8), 接收当前 ADC 值
- * @param target 输出缓冲区 (8), 接收目标 ADC 值
- * @param duty   输出缓冲区 (8), 接收当前占空比
+ * @param adc         输出缓冲区 (8), 接收当前 ADC 值
+ * @param target      输出缓冲区 (8), 接收目标 ADC 值
+ * @param duty        输出缓冲区 (8), 接收当前占空比
+ * @param active_flags 输出, 每路 1 bit (bit0=CH1 active, ... bit7=CH8 active)
  */
-void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8]);
+void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8], uint8_t* active_flags);

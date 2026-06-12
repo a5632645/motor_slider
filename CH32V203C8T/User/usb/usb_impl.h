@@ -39,7 +39,7 @@ enum {
 
 /* HID1 64 字节状态报告格式偏移 */
 #define HID1_STATUS_FLAGS    0   /* uint8, bit0=running */
-#define HID1_RSV             1   /* uint8, 保留 */
+#define HID1_ACTIVE_FLAGS    1   /* uint8, 每路 1 bit active */
 #define HID1_ADC(i)          (2 + (i) * 2)   /* uint16 LE, 8路 */
 #define HID1_TARGET(i)       (18 + (i) * 2)  /* uint16 LE, 8路 */
 #define HID1_DUTY(i)         (34 + (i) * 2)  /* uint16 LE, 8路 */
@@ -56,8 +56,9 @@ void HID1_ProcessCommand(void);
 
 /**
  * @brief 填充 HID1 IN 报告并触发发送
- * @param adc    8 路当前 ADC 值 (0~4095)
- * @param target 8 路目标 ADC 值 (0~4095)
- * @param duty   8 路当前占空比 (0~999)
+ * @param adc         8 路当前 ADC 值 (0~4095)
+ * @param target      8 路目标 ADC 值 (0~4095)
+ * @param duty        8 路当前占空比 (0~999)
+ * @param active_flags 每路 1 bit active 标志
  */
-void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8]);
+void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8], uint8_t active_flags);

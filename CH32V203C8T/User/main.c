@@ -74,8 +74,9 @@ int main(void)
             Motor_RunControlLoop();
             {
                 uint16_t adc[8], target[8], duty[8];
-                Motor_GetStatus(adc, target, duty);
-                HID1_SendStatus(adc, target, duty);
+                uint8_t active_flags;
+                Motor_GetStatus(adc, target, duty, &active_flags);
+                HID1_SendStatus(adc, target, duty, active_flags);
             }
             ctrl_state_ = kCtrlState_Idle;
             break;

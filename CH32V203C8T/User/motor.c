@@ -1,5 +1,6 @@
 #include "motor.h"
 #include "pid.h"
+#include "config.h"
 #include "ch32v20x.h"
 #include "ch32v20x_tim.h"
 #include "ch32v20x_gpio.h"
@@ -64,7 +65,7 @@ void Motor_InitPwm(void)
 
     /* === TIM2: 电机 6 (CH1=PA15/A, CH2=PB3/B), 电机 2 (CH3=PB10/B, CH4=PB11/A) === */
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
 
     GPIO_PinRemapConfig(GPIO_FullRemap_TIM2, ENABLE);
 
@@ -101,6 +102,7 @@ void Motor_InitPwm(void)
     gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5;
     gpio.GPIO_Mode = GPIO_Mode_AF_PP;
     GPIO_Init(GPIOB, &gpio);
+    GPIO_PinRemapConfig(GPIO_PartialRemap_TIM3, ENABLE);
 
     TIM_TimeBaseStructInit(&tim);
     tim.TIM_Prescaler = 0;
@@ -293,32 +295,32 @@ void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty)
 
     switch (ch) {
         case MOTOR_1: /* TIM3 CH3=IN1, CH4=IN2 */
-            TIM_SetCompare3(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare4(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare4(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_2: /* TIM2 CH4=IN1, CH3=IN2 */
-            TIM_SetCompare4(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare3(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare4(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_4: /* TIM1 CH2=IN1, CH1=IN2 */
-            TIM_SetCompare2(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare1(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare1(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare2(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_5: /* TIM1 CH3=IN1, CH4=IN2 */
-            TIM_SetCompare3(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare4(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare4(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_6: /* TIM2 CH1=IN1, CH2=IN2 */
-            TIM_SetCompare1(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare2(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare2(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare1(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_7: /* TIM3 CH1=IN1, CH2=IN2 */
-            TIM_SetCompare1(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare2(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare2(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare1(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_8: /* TIM4 CH3=IN1, CH4=IN2 */
-            TIM_SetCompare3(TIM4, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare4(TIM4, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare4(TIM4, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM4, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
     }
 }
@@ -354,7 +356,10 @@ void Motor_InitControl(void)
         motor_states_[i].current_adc_ = 2048;
         motor_states_[i].dir_ = kMotorDir_Stop;
         motor_states_[i].duty_ = 0;
-        Pid_Init(&motor_states_[i].pid_, 0.5f, 0.01f, 0.1f);
+        motor_states_[i].active_ = false;
+        motor_states_[i].timeout_ = 0;
+        Pid_Init(&motor_states_[i].pid_,
+                 PID_DEFAULT_KP, PID_DEFAULT_KI, PID_DEFAULT_KD);
     }
 }
 
@@ -371,37 +376,68 @@ void Motor_RunControlLoop(void)
     if (!motor_adc_ready_) return;
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
-        motor_states_[i].current_adc_ = motor_adc_dma_buf_[i];
+        /* ADC 物理通道与电机序号反序 (PCB 布局) */
+        uint8_t mi = (uint8_t)(MOTOR_COUNT - 1 - i);
+        motor_states_[mi].current_adc_ = motor_adc_dma_buf_[i];
 
-        if (i == MOTOR_3) {
-            /* 电机 3 GPIO 开关控制 */
-            int16_t diff = (int16_t)(motor_states_[i].target_adc_ - motor_states_[i].current_adc_);
-            if (diff > 20) {
-                Motor_SetPwm(i, kMotorDir_Forward, 500);
-            } else if (diff < -20) {
-                Motor_SetPwm(i, kMotorDir_Reverse, 500);
+        /* 非活跃电机：跳过，PWM 保持 0 */
+        if (!motor_states_[mi].active_) continue;
+
+        /* 判断是否到达目标 */
+        int16_t diff = (int16_t)(motor_states_[mi].target_adc_ - motor_states_[mi].current_adc_);
+        int16_t abs_diff = (diff < 0) ? -diff : diff;
+        if (abs_diff <= CTRL_ERROR_THRESHOLD) {
+            motor_states_[mi].active_ = false;
+            motor_states_[mi].duty_ = 0;
+            Motor_SetPwm(mi, kMotorDir_Stop, 0);
+            continue;
+        }
+
+        /* 超时判断 */
+        if (motor_states_[mi].timeout_ > 0) {
+            motor_states_[mi].timeout_--;
+        }
+        if (motor_states_[mi].timeout_ == 0) {
+            motor_states_[mi].active_ = false;
+            motor_states_[mi].duty_ = 0;
+            Motor_SetPwm(mi, kMotorDir_Stop, 0);
+            continue;
+        }
+
+        /* ── 闭环控制 ── */
+        if (mi == MOTOR_3) {
+            /* 电机 3: GPIO 开关控制 */
+            if (abs_diff > MOTOR3_DEADBAND) {
+                if (diff > 0) {
+                    Motor_SetPwm(mi, kMotorDir_Forward, 500);
+                } else {
+                    Motor_SetPwm(mi, kMotorDir_Reverse, 500);
+                }
             } else {
-                Motor_SetPwm(i, kMotorDir_Stop, 0);
+                Motor_SetPwm(mi, kMotorDir_Stop, 0);
             }
             continue;
         }
 
-        float output = Pid_Update(&motor_states_[i].pid_,
-                                  (float)motor_states_[i].target_adc_,
-                                  (float)motor_states_[i].current_adc_);
+        /* 电机 1~2, 4~8: PID 控制 */
+        float output = Pid_Update(&motor_states_[mi].pid_,
+                                  (float)motor_states_[mi].target_adc_,
+                                  (float)motor_states_[mi].current_adc_);
 
         if (output > 0) {
-            motor_states_[i].dir_ = kMotorDir_Forward;
-            motor_states_[i].duty_ = (uint16_t)(output > 999.0f ? 999 : (uint16_t)output);
+            motor_states_[mi].dir_ = kMotorDir_Forward;
+            uint16_t raw = (uint16_t)(output > 999.0f ? 999 : (uint16_t)output);
+            motor_states_[mi].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
         } else if (output < 0) {
-            motor_states_[i].dir_ = kMotorDir_Reverse;
-            motor_states_[i].duty_ = (uint16_t)(-output > 999.0f ? 999 : (uint16_t)(-output));
+            motor_states_[mi].dir_ = kMotorDir_Reverse;
+            uint16_t raw = (uint16_t)(-output > 999.0f ? 999 : (uint16_t)(-output));
+            motor_states_[mi].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
         } else {
-            motor_states_[i].dir_ = kMotorDir_Stop;
-            motor_states_[i].duty_ = 0;
+            motor_states_[mi].dir_ = kMotorDir_Stop;
+            motor_states_[mi].duty_ = 0;
         }
 
-        Motor_SetPwm(i, motor_states_[i].dir_, motor_states_[i].duty_);
+        Motor_SetPwm(mi, motor_states_[mi].dir_, motor_states_[mi].duty_);
     }
 }
 
@@ -419,6 +455,9 @@ void Motor_SetTarget(uint8_t ch, uint16_t target_adc)
 {
     if (ch < MOTOR_COUNT) {
         motor_states_[ch].target_adc_ = target_adc;
+        motor_states_[ch].active_ = true;
+        motor_states_[ch].timeout_ = CTRL_TIMEOUT_MS;
+        Pid_Reset(&motor_states_[ch].pid_);
     }
 }
 
@@ -432,7 +471,8 @@ void Motor_SetTarget(uint8_t ch, uint16_t target_adc)
 void Motor_StopAll(void)
 {
     for (int i = 0; i < MOTOR_COUNT; i++) {
-        Motor_SetTarget(i, motor_states_[i].current_adc_);
+        motor_states_[i].active_ = false;
+        motor_states_[i].timeout_ = 0;
         Motor_SetPwm(i, kMotorDir_Stop, 0);
     }
 }
@@ -460,11 +500,14 @@ bool Motor_IsAdcReady(void)
  *
  * @return  none
  */
-void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8])
+void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8], uint8_t* active_flags)
 {
+    uint8_t flags = 0;
     for (int i = 0; i < MOTOR_COUNT; i++) {
         adc[i]    = motor_states_[i].current_adc_;
         target[i] = motor_states_[i].target_adc_;
         duty[i]   = motor_states_[i].duty_;
+        if (motor_states_[i].active_) flags |= (uint8_t)(1u << i);
     }
+    if (active_flags) *active_flags = flags;
 }
