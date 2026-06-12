@@ -32,11 +32,11 @@ try:
     )
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-        QTableWidget, QTableWidgetItem, QHeaderView, QLabel, QStatusBar,
-        QStyledItemDelegate, QPlainTextEdit, QPushButton, QSplitter,
+        QLabel, QStatusBar, QPlainTextEdit, QPushButton, QSplitter,
+        QSlider, QSizePolicy,
     )
     from PyQt6.QtGui import (
-        QColor, QPalette, QFont, QPainter, QLinearGradient,
+        QColor, QPalette, QFont, QPainter, QPen,
     )
 except ImportError:
     print("请先安装 PyQt6: pip install PyQt6")
@@ -301,82 +301,114 @@ class HidDebugWorker(QThread):
 
 
 # ---------------------------------------------------------------------------
-# 带进度条的表格项委托
+# ADC 指示器 (自定义绘制: 竖线 + 横线标记)
 # ---------------------------------------------------------------------------
-class ProgressBarDelegate(QStyledItemDelegate):
-    """在单元格内绘制自定义进度条"""
+class AdcIndicator(QWidget):
+    """垂直竖线 + 横线标记，表示当前 ADC 值位置"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._bar_height = 16
+        self._value = 0
+        self.setMinimumWidth(16)
 
-    def paint(self, painter, option, index):
-        super().paint(painter, option, index)
+    def set_value(self, value: int):
+        self._value = max(0, min(4095, value))
+        self.update()
 
-        value = index.data(Qt.ItemDataRole.UserRole)
-        if value is None:
-            return
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        w = self.width()
+        h = self.height()
 
-        percent = max(0.0, min(100.0, float(value)))
+        # 竖线 (中心)
+        pen = QPen(QColor("#999"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        cx = w // 2
+        margin = 4
+        painter.drawLine(cx, margin, cx, h - margin)
 
-        # 计算进度条区域
-        rect = option.rect.adjusted(4, 4, -4, -4)
-        bar_width = int(rect.width() * percent / 100.0)
+        # 横线标记 (ADC 位置)
+        pos_ratio = self._value / 4095.0
+        y = h - margin - int(pos_ratio * (h - 2 * margin))
+        y = max(margin, min(h - margin, y))
 
-        # 背景
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        marker_pen = QPen(QColor("#4CAF50"))
+        marker_pen.setWidth(3)
+        painter.setPen(marker_pen)
+        painter.drawLine(cx - 7, y, cx + 7, y)
 
-        bg_color = option.palette.color(QPalette.ColorRole.Window)
-        painter.setBrush(bg_color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(rect, 3, 3)
+        painter.end()
 
-        # 前景 — 渐变
-        if percent > 0:
-            gradient = QLinearGradient(QPointF(rect.topLeft()), QPointF(rect.topRight()))
-            if percent < 30:
-                gradient.setColorAt(0.0, QColor("#4CAF50"))   # 绿色
-                gradient.setColorAt(1.0, QColor("#81C784"))
-            elif percent < 70:
-                gradient.setColorAt(0.0, QColor("#FF9800"))   # 橙色
-                gradient.setColorAt(1.0, QColor("#FFB74D"))
-            else:
-                gradient.setColorAt(0.0, QColor("#F44336"))   # 红色
-                gradient.setColorAt(1.0, QColor("#E57373"))
 
-            bar_rect = rect.adjusted(0, 0, -(rect.width() - bar_width), 0)
-            painter.setBrush(gradient)
-            painter.drawRoundedRect(bar_rect, 3, 3)
+# ---------------------------------------------------------------------------
+# 电位器部件 (Slider + ADC 指示器 + PWM 数字)
+# ---------------------------------------------------------------------------
+class PotWidget(QWidget):
+    """单个电位器控件: 可拖动 Slider (目标) + 竖线指示器 (ADC) + PWM 数字"""
 
-            # 百分比文字
-            painter.setPen(Qt.GlobalColor.white)
-            font = painter.font()
-            font.setPointSize(8)
-            painter.setFont(font)
-            text = f"{percent:.0f}%"
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+    def __init__(self, channel: int, parent=None):
+        super().__init__(parent)
+        self._channel = channel  # 0-based
+        self._adc = 0
+        self._target = 2048
+        self._duty = 0
 
-        painter.restore()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(3, 2, 3, 2)
+        layout.setSpacing(1)
 
-    def sizeHint(self, option, index):
-        size = super().sizeHint(option, index)
-        return size
+        # CH 标签
+        self._ch_label = QLabel(f"CH{channel + 1}")
+        self._ch_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = QFont("Consolas", 9)
+        self._ch_label.setFont(font)
+        layout.addWidget(self._ch_label)
+
+        # Slider + ADC 指示器
+        indicator_area = QWidget()
+        indicator_layout = QHBoxLayout(indicator_area)
+        indicator_layout.setContentsMargins(0, 0, 0, 0)
+        indicator_layout.setSpacing(0)
+
+        self._slider = QSlider(Qt.Orientation.Vertical)
+        self._slider.setRange(0, 4095)
+        self._slider.setValue(2048)
+        self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
+        self._slider.valueChanged.connect(self._on_slider_changed)
+        indicator_layout.addWidget(self._slider)
+
+        self._adc_indicator = AdcIndicator()
+        indicator_layout.addWidget(self._adc_indicator)
+
+        layout.addWidget(indicator_area, stretch=1)
+
+        # 数值标签: ADC + PWM
+        self._value_label = QLabel("ADC:0  PWM:0")
+        self._value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._value_label.setFont(QFont("Consolas", 8))
+        layout.addWidget(self._value_label)
+
+    def update_data(self, adc: int, target: int, duty: int):
+        self._adc = adc
+        self._target = target
+        self._duty = duty
+
+        # 更新 ADC 指示器 (当前值)
+        self._adc_indicator.set_value(adc)
+
+        # 更新数字
+        self._value_label.setText(f"ADC:{adc}  PWM:{duty}")
+
+    def _on_slider_changed(self, value: int):
+        """Slider 拖动时的本地更新 (暂不发送 HID1)"""
+        self._target = value
 
 
 # ---------------------------------------------------------------------------
 # 主窗口
 # ---------------------------------------------------------------------------
 class MainWindow(QMainWindow):
-    COL_CH    = 0
-    COL_ADC   = 1
-    COL_TGT   = 2
-    COL_DUTY  = 3
-    COL_BAR   = 4
-    COL_COUNT = 5
-
-    COL_HEADERS = ["#", "ADC", "目标", "占空比", "位置"]
-
     def __init__(self):
         super().__init__()
         self._worker = HidWorker()
@@ -385,6 +417,7 @@ class MainWindow(QMainWindow):
         self._fps = 0.0
         self._last_fps_time = time.monotonic()
         self._latest_report: Optional[StatusReport] = None
+        self._pots: List[PotWidget] = []
 
         self._init_ui()
         self._connect_signals()
@@ -399,8 +432,8 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle("HID ADC Monitor — 电机滑块控制")
-        self.setMinimumSize(720, 560)
-        self.resize(780, 640)
+        self.setMinimumSize(1280, 720)
+        self.resize(1280, 720)
 
         # 中央控件
         central = QWidget()
@@ -420,63 +453,28 @@ class MainWindow(QMainWindow):
         info_bar.addWidget(self._fps_label)
         layout.addLayout(info_bar)
 
-        # 垂直分割器: 上 = 表格, 下 = 调试控制台
+        # 垂直分割器: 上 = 电位器, 下 = 调试控制台
         splitter = QSplitter(Qt.Orientation.Vertical)
         layout.addWidget(splitter, stretch=1)
 
-        # === 上: ADC 表格 ===
-        table_container = QWidget()
-        table_layout = QVBoxLayout(table_container)
-        table_layout.setContentsMargins(0, 0, 0, 0)
+        # === 上: 8 路电位器 ===
+        pots_container = QWidget()
+        pots_layout = QVBoxLayout(pots_container)
+        pots_layout.setContentsMargins(0, 0, 0, 0)
+        pots_layout.setSpacing(0)
 
-        self._table = QTableWidget(MOTOR_COUNT, self.COL_COUNT)
-        self._table.setHorizontalHeaderLabels(self.COL_HEADERS)
-        self._table.verticalHeader().setVisible(False)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        pots_row = QWidget()
+        row_layout = QHBoxLayout(pots_row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(2)
 
-        # 列宽
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(self.COL_CH,   QHeaderView.ResizeMode.Fixed)
-        hdr.setSectionResizeMode(self.COL_ADC,  QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(self.COL_TGT,  QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(self.COL_DUTY, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(self.COL_BAR,  QHeaderView.ResizeMode.Stretch)
-        self._table.setColumnWidth(self.COL_CH, 40)
+        for i in range(MOTOR_COUNT):
+            pot = PotWidget(i)
+            self._pots.append(pot)
+            row_layout.addWidget(pot, 1)  # stretch=1 强制均分宽度
 
-        # 进度条委托
-        self._bar_delegate = ProgressBarDelegate(self._table)
-        self._table.setItemDelegateForColumn(self.COL_BAR, self._bar_delegate)
-
-        # 行高
-        self._table.verticalHeader().setDefaultSectionSize(36)
-
-        # 交替行颜色
-        self._table.setAlternatingRowColors(True)
-
-        table_layout.addWidget(self._table)
-        splitter.addWidget(table_container)
-
-        # 初始化表格内容
-        font = QFont("Consolas", 10)
-        for row in range(MOTOR_COUNT):
-            # # 列
-            item = QTableWidgetItem(str(row + 1))
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item.setFont(font)
-            self._table.setItem(row, self.COL_CH, item)
-
-            for col in (self.COL_ADC, self.COL_TGT, self.COL_DUTY):
-                item = QTableWidgetItem("—")
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                item.setFont(font)
-                self._table.setItem(row, col, item)
-
-            # 进度条列
-            item = QTableWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, 0.0)
-            self._table.setItem(row, self.COL_BAR, item)
+        pots_layout.addWidget(pots_row)
+        splitter.addWidget(pots_container)
 
         # === 下: 调试控制台 ===
         console_container = QWidget()
@@ -549,12 +547,9 @@ class MainWindow(QMainWindow):
     def _on_hid1_disconnected(self, reason: str):
         self._conn_hid1_label.setText("HID1:○")
         self._conn_hid1_label.setStyleSheet("color: #888; margin-right: 8px;")
-        # 清空 ADC 数据
-        for row in range(MOTOR_COUNT):
-            for col in (self.COL_ADC, self.COL_TGT, self.COL_DUTY):
-                self._table.item(row, col).setText("—")
-            self._table.item(row, self.COL_BAR).setData(Qt.ItemDataRole.UserRole, 0.0)
-        self._table.viewport().update()
+        # 清空所有电位器
+        for pot in self._pots:
+            pot.update_data(0, 2048, 0)
         self._update_overall_status()
 
     def _on_hid0_connected(self):
@@ -597,15 +592,8 @@ class MainWindow(QMainWindow):
         for i, ch in enumerate(report.channels):
             if not ch.connected:
                 continue
-            self._table.item(i, self.COL_ADC).setText(str(ch.adc))
-            self._table.item(i, self.COL_TGT).setText(str(ch.target))
-            self._table.item(i, self.COL_DUTY).setText(str(ch.duty))
-
-            percent = (ch.adc / 4095.0) * 100.0 if ch.adc <= 4095 else 0.0
-            self._table.item(i, self.COL_BAR).setData(Qt.ItemDataRole.UserRole, percent)
-
-        # 触发重绘（列委拖不会自动刷新）
-        self._table.viewport().update()
+            if i < len(self._pots):
+                self._pots[i].update_data(ch.adc, ch.target, ch.duty)
 
     def _update_fps(self):
         now = time.monotonic()
@@ -633,12 +621,6 @@ def main():
 
     # 全局样式
     app.setStyleSheet("""
-        QTableWidget {
-            font-size: 13px;
-        }
-        QTableWidget::item {
-            padding: 2px 4px;
-        }
         QStatusBar {
             font-size: 12px;
         }
