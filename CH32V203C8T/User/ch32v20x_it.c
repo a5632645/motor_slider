@@ -12,6 +12,7 @@
 #include "ch32v20x_it.h"
 #include "usb/usb_impl.h"
 #include "tick.h"
+#include "motor.h"
 
 void NMI_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
@@ -58,5 +59,6 @@ void SysTick_Handler(void)
 {
   SysTick->SR = 0;
   Tick_Increment();
+  Motor_StartAdcConversion();
   HID_Flush();
 }

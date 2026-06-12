@@ -24,7 +24,7 @@ tpusb::Device{
     2,          // iProduct
     3,          // iSerialNumber
     1           // bNumConfigurations
-};
+}.Composite();
 
 /*
  * HID Report Descriptor:
@@ -46,12 +46,33 @@ static constexpr uint8_t kHidReportDesc[] = {
 };
 
 /*
- * Configuration Descriptor:
- *   Config(9) + HID_Interface(9+HID+Endpoint)
- *   wTotalLength and bNumInterfaces are auto-calculated by tpusb.
- *
- *   Interface 0: HID, 1x Interrupt IN endpoint (64 bytes)
+ * HID1 Motor Control Report Descriptor:
  *   Usage Page 0xFF01 (Vendor Defined)
+ *   64-byte Output (commands) + 64-byte Input (status)
+ */
+static constexpr uint8_t kMotorReportDesc[] = {
+    0x06, 0x00, 0xFF,       /* Usage Page (Vendor 0xFF01) */
+    0x09, 0x03,             /* Usage (Motor Control) */
+    0xA1, 0x01,             /* Collection (Application) */
+    0x09, 0x04,             /*   Usage (Commands) */
+    0x15, 0x00,
+    0x26, 0xFF, 0x00,
+    0x75, 0x08,
+    0x95, 64,
+    0x91, 0x02,             /*   Output (Data,Var,Abs) */
+    0x09, 0x05,             /*   Usage (Status) */
+    0x15, 0x00,
+    0x26, 0xFF, 0x00,
+    0x75, 0x08,
+    0x95, 64,
+    0x81, 0x02,             /*   Input (Data,Var,Abs) */
+    0xC0,                   /* End Collection */
+};
+
+/*
+ * Configuration Descriptor:
+ *   Config + HID0(printf) + HID1(motor control)
+ *   wTotalLength and bNumInterfaces are auto-calculated by tpusb.
  */
 static constexpr auto kConfig =
 tpusb::Config{
@@ -59,7 +80,7 @@ tpusb::Config{
         .config_no = 1,
         .str_id = 0,
         .attribute = 0x80,
-        .power = 50
+        .power = 250
     },
     tpusb::hid::HID_Interface{
         tpusb::InterfaceInitPackClassed{
@@ -84,6 +105,40 @@ tpusb::Config{
             tpusb::InterruptInitPack{
                 .address = HID_IN_EP_ADDRESS,
                 .max_pack_size = HID_IN_EP_MPSIZE,
+                .interval = 1
+            }
+        }
+    },
+    tpusb::hid::HID_Interface{
+        tpusb::InterfaceInitPackClassed{
+            .interface_no = 1,
+            .alter = 0,
+            .protocol = 0,
+            .str_id = 0
+        },
+        tpusb::hid::HID_Descriptor<1>{
+            tpusb::hid::HID_Descriptor_InitPack{
+                .bcd_hid = 0x0111,
+                .country_code = 0,
+            },
+            std::array{
+                tpusb::hid::HID_DescriptorLengthDesc{
+                    .type = 0x22,
+                    .length = sizeof(kMotorReportDesc)
+                }
+            }
+        },
+        tpusb::Endpoint{
+            tpusb::InterruptInitPack{
+                .address = HID1_IN_EP_ADDRESS,
+                .max_pack_size = HID1_EP_MPSIZE,
+                .interval = 1
+            }
+        },
+        tpusb::Endpoint{
+            tpusb::InterruptInitPack{
+                .address = HID1_OUT_EP_ADDRESS,
+                .max_pack_size = HID1_EP_MPSIZE,
                 .interval = 1
             }
         }
@@ -134,9 +189,16 @@ uint8_t const* UsbDesc_String(uint8_t idx, uint16_t* len) {
     }
 }
 
-uint8_t const* UsbDesc_Hid(uint16_t* len) {
-    *len = sizeof(kHidReportDesc);
-    return kHidReportDesc;
+uint8_t const* UsbDesc_Hid(uint16_t interface_idx, uint16_t* len) {
+    if (interface_idx == 0) {
+        *len = sizeof(kHidReportDesc);
+        return kHidReportDesc;
+    } else if (interface_idx == 1) {
+        *len = sizeof(kMotorReportDesc);
+        return kMotorReportDesc;
+    }
+    *len = 0;
+    return nullptr;
 }
 
 } // extern "C"

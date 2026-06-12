@@ -14,8 +14,7 @@
 #include "usbd.h"
 #include "usb/usb_impl.h"
 #include "tick.h"
-
-uint32_t t;
+#include "motor.h"
 
 int main(void)
 {
@@ -26,18 +25,23 @@ int main(void)
     printf("SystemClk:%d\r\n", SystemCoreClock);
     printf("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
 
+    /* Init motor control */
+    Motor_InitPwm();
+    Motor_InitAdc();
+    Motor_InitControl();
+
     /* Init USB HID device */
     HID_Init();
+    HID1_Init();
     Usbd_Init();
     Usbd_Connect();
     printf("USB HID ready\r\n");
 
-    t = Tick_Get();
     while (1)
     {
-        if (Tick_Get() - t > 1000) {
-            t = Tick_Get();
-            printf("test\n");
+        if (motor_adc_ready_) {
+            Motor_RunControlLoop();
         }
+        HID1_ProcessCommand();
     }
 }

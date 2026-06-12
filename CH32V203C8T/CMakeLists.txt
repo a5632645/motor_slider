@@ -41,13 +41,13 @@ SET(CMAKE_CXX_COMPILER_WORKS TRUE)
 SET(CMAKE_ASM_COMPILER_WORKS TRUE)
 
 # Use MRS toolchian to compile
-set(TOOLCHAIN_FOLDER "c:/MounRiver/MounRiver_Studio2/resources/app/resources/win32/components/WCH/Toolchain/RISC-V Embedded GCC12")
-set(TOOLCHAIN_PREFIX "riscv-wch-elf-")
-set(CMAKE_C_COMPILER "${TOOLCHAIN_FOLDER}/bin/riscv-wch-elf-gcc.exe")
-set(CMAKE_CXX_COMPILER "${TOOLCHAIN_FOLDER}/bin/riscv-wch-elf-g++.exe")
-set(CMAKE_ASM_COMPILER "${TOOLCHAIN_FOLDER}/bin/riscv-wch-elf-gcc.exe")
+set(TOOLCHAIN_FOLDER "c:/MounRiver/MounRiver_Studio2/resources/app/resources/win32/components/WCH/Toolchain/RISC-V Embedded GCC15")
+set(TOOLCHAIN_PREFIX "riscv32-wch-elf-")
+set(CMAKE_C_COMPILER "${TOOLCHAIN_FOLDER}/bin/riscv32-wch-elf-gcc.exe")
+set(CMAKE_CXX_COMPILER "${TOOLCHAIN_FOLDER}/bin/riscv32-wch-elf-g++.exe")
+set(CMAKE_ASM_COMPILER "${TOOLCHAIN_FOLDER}/bin/riscv32-wch-elf-gcc.exe")
 set(CMAKE_OBJCOPY "${TOOLCHAIN_FOLDER}/bin/${TOOLCHAIN_PREFIX}objcopy.exe")
-set(CMAKE_OBJDUMP "${TOOLCHAIN_FOLDER}/bin/riscv-wch-elf-objdump.exe")
+set(CMAKE_OBJDUMP "${TOOLCHAIN_FOLDER}/bin/riscv32-wch-elf-objdump.exe")
 set(CMAKE_SIZE "${TOOLCHAIN_FOLDER}/bin/${TOOLCHAIN_PREFIX}size.exe")
 set(CMAKE_AR "${TOOLCHAIN_FOLDER}/bin/${TOOLCHAIN_PREFIX}ar.exe")
 
@@ -69,6 +69,8 @@ set(SRC_FILES
 "${CMAKE_CURRENT_SOURCE_DIR}/User/usb/usb_impl.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/ch32v20x_it.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/main.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/motor.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/pid.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/system_ch32v20x.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/tick.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/usbd.c"
@@ -96,13 +98,13 @@ set(SRC_FILES
 "${CMAKE_CURRENT_SOURCE_DIR}/Debug/debug.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/Core/core_riscv.c"
 )
-set(CMAKE_C_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -I\"${CMAKE_CURRENT_SOURCE_DIR}/Debug\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Core\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/User\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Peripheral/inc\" -std=gnu99")
-set(CMAKE_CXX_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -std=gnu++17 -fabi-version=0")
-set(CMAKE_ASM_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -x assembler-with-cpp")
+set(CMAKE_C_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -I\"${CMAKE_CURRENT_SOURCE_DIR}/Debug\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Core\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/User\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Peripheral/inc\" -std=gnu17")
+set(CMAKE_CXX_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -std=gnu++17 -fabi-version=0")
+set(CMAKE_ASM_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -x assembler-with-cpp")
 
 add_executable("${TARGET_ARTIFACT}" ${SRC_FILES})
 
-set_target_properties("${TARGET_ARTIFACT}" PROPERTIES LINK_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -T \"${CMAKE_CURRENT_SOURCE_DIR}/Ld/Link.ld\"   -nostartfiles -Xlinker --gc-sections -Wl,-Map,\"CH32V203C8T.map\" --specs=nano.specs --specs=nosys.specs")
+set_target_properties("${TARGET_ARTIFACT}" PROPERTIES LINK_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -T \"${CMAKE_CURRENT_SOURCE_DIR}/Ld/Link.ld\"   -nostartfiles -Xlinker --gc-sections -Wl,-Map,\"CH32V203C8T.map\" --specs=nano.specs --specs=nosys.specs")
 
 target_link_libraries("${TARGET_ARTIFACT}" )
 

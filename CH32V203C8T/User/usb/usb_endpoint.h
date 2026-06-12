@@ -11,6 +11,7 @@ enum UsbEndpointType {
 enum UsbEndpointNumber {
     kUsbEndpoint_Control = 0,
     kUsbEndpoint_HidIn,
+    kUsbEndpoint_Hid1In = 2,
 };
 
 struct UsbEndpoint {
