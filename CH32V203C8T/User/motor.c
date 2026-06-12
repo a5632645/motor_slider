@@ -1,17 +1,17 @@
 #include "motor.h"
-#include "pid.h"
-#include "config.h"
 #include "ch32v20x.h"
-#include "ch32v20x_tim.h"
-#include "ch32v20x_gpio.h"
-#include "ch32v20x_rcc.h"
 #include "ch32v20x_dma.h"
+#include "ch32v20x_gpio.h"
 #include "ch32v20x_misc.h"
+#include "ch32v20x_rcc.h"
+#include "ch32v20x_tim.h"
+#include "config.h"
+#include "pid.h"
 #include "usb/usb_impl.h"
 
+
 /* ADC DMA 缓冲区 */
-__attribute__((aligned(4)))
-volatile uint16_t motor_adc_dma_buf_[MOTOR_COUNT];
+__attribute__((aligned(4))) volatile uint16_t motor_adc_dma_buf_[MOTOR_COUNT];
 volatile bool motor_adc_ready_;
 
 /* 电机状态数组 */
@@ -25,14 +25,12 @@ struct MotorState motor_states_[MOTOR_COUNT];
  *
  * @return  none
  */
-void Motor_InitPwm(void)
-{
+void Motor_InitPwm(void) {
     GPIO_InitTypeDef gpio;
     TIM_TimeBaseInitTypeDef tim;
     TIM_OCInitTypeDef oc;
 
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1 | RCC_APB2Periph_GPIOA
-                           | RCC_APB2Periph_GPIOB, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1 | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
 
     /* === TIM1: 电机 4 (CH2=PA9/A, CH1=PA8/B), 电机 5 (CH3=PA10/A, CH4=PA11/B) === */
     gpio.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_11;
@@ -55,10 +53,10 @@ void Motor_InitPwm(void)
     oc.TIM_OCIdleState = TIM_OCIdleState_Reset;
     oc.TIM_OCNIdleState = TIM_OCNIdleState_Reset;
 
-    TIM_OC1Init(TIM1, &oc);  /* CH1=PA8  — 电机4 B */
-    TIM_OC2Init(TIM1, &oc);  /* CH2=PA9  — 电机4 A */
-    TIM_OC3Init(TIM1, &oc);  /* CH3=PA10 — 电机5 A */
-    TIM_OC4Init(TIM1, &oc);  /* CH4=PA11 — 电机5 B */
+    TIM_OC1Init(TIM1, &oc); /* CH1=PA8  — 电机4 B */
+    TIM_OC2Init(TIM1, &oc); /* CH2=PA9  — 电机4 A */
+    TIM_OC3Init(TIM1, &oc); /* CH3=PA10 — 电机5 A */
+    TIM_OC4Init(TIM1, &oc); /* CH4=PA11 — 电机5 B */
 
     TIM_CtrlPWMOutputs(TIM1, ENABLE);
     TIM_Cmd(TIM1, ENABLE);
@@ -89,10 +87,10 @@ void Motor_InitPwm(void)
     oc.TIM_Pulse = 0;
     oc.TIM_OCPolarity = TIM_OCPolarity_High;
 
-    TIM_OC1Init(TIM2, &oc);  /* PA15 — 电机6 A */
-    TIM_OC2Init(TIM2, &oc);  /* PB3  — 电机6 B */
-    TIM_OC3Init(TIM2, &oc);  /* PB10 — 电机2 B */
-    TIM_OC4Init(TIM2, &oc);  /* PB11 — 电机2 A */
+    TIM_OC1Init(TIM2, &oc); /* PA15 — 电机6 A */
+    TIM_OC2Init(TIM2, &oc); /* PB3  — 电机6 B */
+    TIM_OC3Init(TIM2, &oc); /* PB10 — 电机2 B */
+    TIM_OC4Init(TIM2, &oc); /* PB11 — 电机2 A */
 
     TIM_Cmd(TIM2, ENABLE);
 
@@ -117,10 +115,10 @@ void Motor_InitPwm(void)
     oc.TIM_Pulse = 0;
     oc.TIM_OCPolarity = TIM_OCPolarity_High;
 
-    TIM_OC1Init(TIM3, &oc);  /* PB4 — 电机7 A */
-    TIM_OC2Init(TIM3, &oc);  /* PB5 — 电机7 B */
-    TIM_OC3Init(TIM3, &oc);  /* PB0 — 电机1 A */
-    TIM_OC4Init(TIM3, &oc);  /* PB1 — 电机1 B */
+    TIM_OC1Init(TIM3, &oc); /* PB4 — 电机7 A */
+    TIM_OC2Init(TIM3, &oc); /* PB5 — 电机7 B */
+    TIM_OC3Init(TIM3, &oc); /* PB0 — 电机1 A */
+    TIM_OC4Init(TIM3, &oc); /* PB1 — 电机1 B */
 
     TIM_Cmd(TIM3, ENABLE);
 
@@ -144,8 +142,8 @@ void Motor_InitPwm(void)
     oc.TIM_Pulse = 0;
     oc.TIM_OCPolarity = TIM_OCPolarity_High;
 
-    TIM_OC3Init(TIM4, &oc);  /* PB8 — 电机8 A */
-    TIM_OC4Init(TIM4, &oc);  /* PB9 — 电机8 B */
+    TIM_OC3Init(TIM4, &oc); /* PB8 — 电机8 A */
+    TIM_OC4Init(TIM4, &oc); /* PB9 — 电机8 B */
 
     TIM_Cmd(TIM4, ENABLE);
 
@@ -167,8 +165,7 @@ void Motor_InitPwm(void)
  *
  * @return  none
  */
-void Motor_InitAdc(void)
-{
+void Motor_InitAdc(void) {
     ADC_InitTypeDef adc;
     GPIO_InitTypeDef gpio;
     DMA_InitTypeDef dma;
@@ -177,8 +174,8 @@ void Motor_InitAdc(void)
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 
     /* PA0~PA7 模拟输入 */
-    gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3
-                  | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
+    gpio.GPIO_Pin =
+        GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
     gpio.GPIO_Mode = GPIO_Mode_AIN;
     GPIO_Init(GPIOA, &gpio);
 
@@ -201,7 +198,7 @@ void Motor_InitAdc(void)
 
     /* === ADC1 配置 === */
     ADC_DeInit(ADC1);
-    RCC_ADCCLKConfig(RCC_PCLK2_Div8);  /* ADC 时钟 = 12MHz */
+    RCC_ADCCLKConfig(RCC_PCLK2_Div8); /* ADC 时钟 = 12MHz */
 
     adc.ADC_Mode = ADC_Mode_Independent;
     adc.ADC_ScanConvMode = ENABLE;
@@ -236,9 +233,11 @@ void Motor_InitAdc(void)
 
     ADC_Cmd(ADC1, ENABLE);
     ADC_ResetCalibration(ADC1);
-    while (ADC_GetResetCalibrationStatus(ADC1));
+    while (ADC_GetResetCalibrationStatus(ADC1))
+        ;
     ADC_StartCalibration(ADC1);
-    while (ADC_GetCalibrationStatus(ADC1));
+    while (ADC_GetCalibrationStatus(ADC1))
+        ;
 }
 
 /*********************************************************************
@@ -248,10 +247,10 @@ void Motor_InitAdc(void)
  *
  * @return  none
  */
-void Motor_StartAdcConversion(void)
-{
+void Motor_StartAdcConversion(void) {
     /* 上次转换未完成，跳过本次触发 */
-    if (!motor_adc_ready_) return;
+    if (!motor_adc_ready_)
+        return;
 
     motor_adc_ready_ = false;
     DMA_Cmd(DMA1_Channel1, DISABLE);
@@ -274,20 +273,23 @@ void Motor_StartAdcConversion(void)
  * @note    电机 1~2, 4~8 使用硬件 PWM 定时器
  *          电机 3 使用 GPIO 软件控制
  */
-void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty)
-{
-    if (duty > 999) duty = 999;
+void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
+    if (duty > 999)
+        duty = 999;
 
     if (ch == MOTOR_3) {
         if (dir == kMotorDir_Forward) {
             GPIO_SetBits(GPIOB, GPIO_Pin_14);
             GPIO_ResetBits(GPIOB, GPIO_Pin_15);
-        } else if (dir == kMotorDir_Reverse) {
+        }
+        else if (dir == kMotorDir_Reverse) {
             GPIO_ResetBits(GPIOB, GPIO_Pin_14);
             GPIO_SetBits(GPIOB, GPIO_Pin_15);
-        } else if (dir == kMotorDir_Brake) {
+        }
+        else if (dir == kMotorDir_Brake) {
             GPIO_SetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
-        } else {
+        }
+        else {
             GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
         }
         return;
@@ -333,9 +335,7 @@ void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty)
  *
  * @return  none
  */
-__attribute__((interrupt("WCH-Interrupt-fast")))
-void DMA1_Channel1_IRQHandler(void)
-{
+__attribute__((interrupt("WCH-Interrupt-fast"))) void DMA1_Channel1_IRQHandler(void) {
     if (DMA_GetITStatus(DMA1_IT_TC1)) {
         DMA_ClearITPendingBit(DMA1_IT_TC1);
         motor_adc_ready_ = true;
@@ -349,8 +349,7 @@ void DMA1_Channel1_IRQHandler(void)
  *
  * @return  none
  */
-void Motor_InitControl(void)
-{
+void Motor_InitControl(void) {
     for (int i = 0; i < MOTOR_COUNT; i++) {
         motor_states_[i].target_adc_ = 2048;
         motor_states_[i].current_adc_ = 2048;
@@ -358,8 +357,7 @@ void Motor_InitControl(void)
         motor_states_[i].duty_ = 0;
         motor_states_[i].active_ = false;
         motor_states_[i].timeout_ = 0;
-        Pid_Init(&motor_states_[i].pid_,
-                 PID_DEFAULT_KP, PID_DEFAULT_KI, PID_DEFAULT_KD);
+        Pid_Init(&motor_states_[i].pid_, PID_DEFAULT_KP, PID_DEFAULT_KI, PID_DEFAULT_KD);
     }
 }
 
@@ -371,9 +369,9 @@ void Motor_InitControl(void)
  *
  * @return  none
  */
-void Motor_RunControlLoop(void)
-{
-    if (!motor_adc_ready_) return;
+void Motor_RunControlLoop(void) {
+    if (!motor_adc_ready_)
+        return;
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
         /* ADC 物理通道与电机序号反序 (PCB 布局) */
@@ -381,7 +379,8 @@ void Motor_RunControlLoop(void)
         motor_states_[mi].current_adc_ = motor_adc_dma_buf_[i];
 
         /* 非活跃电机：跳过，PWM 保持 0 */
-        if (!motor_states_[mi].active_) continue;
+        if (!motor_states_[mi].active_)
+            continue;
 
         /* 判断是否到达目标 */
         int16_t diff = (int16_t)(motor_states_[mi].target_adc_ - motor_states_[mi].current_adc_);
@@ -410,29 +409,32 @@ void Motor_RunControlLoop(void)
             if (abs_diff > MOTOR3_DEADBAND) {
                 if (diff > 0) {
                     Motor_SetPwm(mi, kMotorDir_Forward, 500);
-                } else {
+                }
+                else {
                     Motor_SetPwm(mi, kMotorDir_Reverse, 500);
                 }
-            } else {
+            }
+            else {
                 Motor_SetPwm(mi, kMotorDir_Stop, 0);
             }
             continue;
         }
 
         /* 电机 1~2, 4~8: PID 控制 */
-        float output = Pid_Update(&motor_states_[mi].pid_,
-                                  (float)motor_states_[mi].target_adc_,
+        float output = Pid_Update(&motor_states_[mi].pid_, (float)motor_states_[mi].target_adc_,
                                   (float)motor_states_[mi].current_adc_);
 
         if (output > 0) {
             motor_states_[mi].dir_ = kMotorDir_Forward;
             uint16_t raw = (uint16_t)(output > 999.0f ? 999 : (uint16_t)output);
             motor_states_[mi].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
-        } else if (output < 0) {
+        }
+        else if (output < 0) {
             motor_states_[mi].dir_ = kMotorDir_Reverse;
             uint16_t raw = (uint16_t)(-output > 999.0f ? 999 : (uint16_t)(-output));
             motor_states_[mi].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
-        } else {
+        }
+        else {
             motor_states_[mi].dir_ = kMotorDir_Stop;
             motor_states_[mi].duty_ = 0;
         }
@@ -451,8 +453,7 @@ void Motor_RunControlLoop(void)
  *
  * @return  none
  */
-void Motor_SetTarget(uint8_t ch, uint16_t target_adc)
-{
+void Motor_SetTarget(uint8_t ch, uint16_t target_adc) {
     if (ch < MOTOR_COUNT) {
         motor_states_[ch].target_adc_ = target_adc;
         motor_states_[ch].active_ = true;
@@ -468,12 +469,34 @@ void Motor_SetTarget(uint8_t ch, uint16_t target_adc)
  *
  * @return  none
  */
-void Motor_StopAll(void)
-{
+void Motor_StopAll(void) {
     for (int i = 0; i < MOTOR_COUNT; i++) {
         motor_states_[i].active_ = false;
         motor_states_[i].timeout_ = 0;
         Motor_SetPwm(i, kMotorDir_Stop, 0);
+    }
+}
+
+/*********************************************************************
+ * @fn      Motor_SetPid
+ *
+ * @brief   设置指定电机的 PID 参数 (运行时更新)
+ *
+ * @param   ch  电机序号 (0~7), 0xFF=全部
+ * @param   kp  比例增益
+ * @param   ki  积分增益
+ * @param   kd  微分增益
+ *
+ * @return  none
+ */
+void Motor_SetPid(uint8_t ch, float kp, float ki, float kd) {
+    if (ch == 0xFF) {
+        for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
+            Pid_Init(&motor_states_[i].pid_, kp, ki, kd);
+        }
+    }
+    else if (ch < MOTOR_COUNT) {
+        Pid_Init(&motor_states_[ch].pid_, kp, ki, kd);
     }
 }
 
@@ -484,8 +507,7 @@ void Motor_StopAll(void)
  *
  * @return  true 就绪, false 忙
  */
-bool Motor_IsAdcReady(void)
-{
+bool Motor_IsAdcReady(void) {
     return motor_adc_ready_;
 }
 
@@ -500,14 +522,15 @@ bool Motor_IsAdcReady(void)
  *
  * @return  none
  */
-void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8], uint8_t* active_flags)
-{
+void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8], uint8_t* active_flags) {
     uint8_t flags = 0;
     for (int i = 0; i < MOTOR_COUNT; i++) {
-        adc[i]    = motor_states_[i].current_adc_;
+        adc[i] = motor_states_[i].current_adc_;
         target[i] = motor_states_[i].target_adc_;
-        duty[i]   = motor_states_[i].duty_;
-        if (motor_states_[i].active_) flags |= (uint8_t)(1u << i);
+        duty[i] = motor_states_[i].duty_;
+        if (motor_states_[i].active_)
+            flags |= (uint8_t)(1u << i);
     }
-    if (active_flags) *active_flags = flags;
+    if (active_flags)
+        *active_flags = flags;
 }

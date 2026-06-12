@@ -22,7 +22,7 @@ struct PidCtx {
  * @param ki    积分增益
  * @param kd    微分增益
  */
-void Pid_Init(struct PidCtx *pid, float kp, float ki, float kd);
+void Pid_Init(struct PidCtx* pid, float kp, float ki, float kd);
 
 /**
  * @brief PID 更新运算
@@ -31,10 +31,10 @@ void Pid_Init(struct PidCtx *pid, float kp, float ki, float kd);
  * @param feedback  反馈值
  * @return          float 控制输出
  */
-float Pid_Update(struct PidCtx *pid, float setpoint, float feedback);
+float Pid_Update(struct PidCtx* pid, float setpoint, float feedback);
 
 /**
  * @brief 重置 PID 内部状态（积分、上次误差清零）
  * @param pid   PID 上下文
  */
-void Pid_Reset(struct PidCtx *pid);
+void Pid_Reset(struct PidCtx* pid);

@@ -10,10 +10,9 @@ static volatile uint32_t tick_;
  *
  * @return  none
  */
-void Tick_Init(void)
-{
+void Tick_Init(void) {
     tick_ = 0;
-    SysTick->CMP = SystemCoreClock / 1000; 
+    SysTick->CMP = SystemCoreClock / 1000;
     SysTick->CNT = 0;
     SysTick->CTLR = 0xf;
     SysTick->SR = 0;
@@ -27,8 +26,7 @@ void Tick_Init(void)
  *
  * @return  tick count in milliseconds
  */
-uint32_t Tick_Get(void)
-{
+uint32_t Tick_Get(void) {
     return tick_;
 }
 
@@ -39,7 +37,6 @@ uint32_t Tick_Get(void)
  *
  * @return  none
  */
-void Tick_Increment(void)
-{
+void Tick_Increment(void) {
     tick_++;
 }

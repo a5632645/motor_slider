@@ -6,15 +6,16 @@
  * Description        : Main program body.
  *********************************************************************************
  * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
- * Attention: This software (modified or not) and binary are used for 
+ * Attention: This software (modified or not) and binary are used for
  * microcontroller manufactured by Nanjing Qinheng Microelectronics.
  *******************************************************************************/
 
 #include "debug.h"
-#include "usbd.h"
-#include "usb/usb_impl.h"
-#include "tick.h"
 #include "motor.h"
+#include "tick.h"
+#include "usb/usb_impl.h"
+#include "usbd.h"
+
 
 /* 控制状态机 */
 enum CtrlState {
@@ -27,8 +28,7 @@ enum CtrlState {
 static enum CtrlState ctrl_state_ = kCtrlState_Idle;
 static uint32_t last_ctrl_tick_ = 0;
 
-int main(void)
-{
+int main(void) {
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
     SystemCoreClockUpdate();
     Tick_Init();
@@ -48,38 +48,37 @@ int main(void)
     Usbd_Connect();
     printf("USB HID ready\r\n");
 
-    while (1)
-    {
+    while (1) {
         /* ── 1kHz 控制状态机 ── */
         switch (ctrl_state_) {
-        case kCtrlState_Idle:
-            if (Tick_Get() != last_ctrl_tick_) {
-                last_ctrl_tick_ = Tick_Get();
-                ctrl_state_ = kCtrlState_AdcStart;
-            }
-            break;
+            case kCtrlState_Idle:
+                if (Tick_Get() != last_ctrl_tick_) {
+                    last_ctrl_tick_ = Tick_Get();
+                    ctrl_state_ = kCtrlState_AdcStart;
+                }
+                break;
 
-        case kCtrlState_AdcStart:
-            Motor_StartAdcConversion();
-            ctrl_state_ = kCtrlState_AdcWait;
-            break;
+            case kCtrlState_AdcStart:
+                Motor_StartAdcConversion();
+                ctrl_state_ = kCtrlState_AdcWait;
+                break;
 
-        case kCtrlState_AdcWait:
-            if (Motor_IsAdcReady()) {
-                ctrl_state_ = kCtrlState_Control;
-            }
-            break;
+            case kCtrlState_AdcWait:
+                if (Motor_IsAdcReady()) {
+                    ctrl_state_ = kCtrlState_Control;
+                }
+                break;
 
-        case kCtrlState_Control:
-            Motor_RunControlLoop();
-            {
-                uint16_t adc[8], target[8], duty[8];
-                uint8_t active_flags;
-                Motor_GetStatus(adc, target, duty, &active_flags);
-                HID1_SendStatus(adc, target, duty, active_flags);
-            }
-            ctrl_state_ = kCtrlState_Idle;
-            break;
+            case kCtrlState_Control:
+                Motor_RunControlLoop();
+                {
+                    uint16_t adc[8], target[8], duty[8];
+                    uint8_t active_flags;
+                    Motor_GetStatus(adc, target, duty, &active_flags);
+                    HID1_SendStatus(adc, target, duty, active_flags);
+                }
+                ctrl_state_ = kCtrlState_Idle;
+                break;
         }
 
         /* ── HID1 命令处理（保持原位，每次迭代执行） ── */

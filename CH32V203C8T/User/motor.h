@@ -1,29 +1,30 @@
 #pragma once
-#include <stdint.h>
-#include <stdbool.h>
 #include "pid.h"
+#include <stdbool.h>
+#include <stdint.h>
+
 
 /* 电机总数 */
 #define MOTOR_COUNT 8
 
 /* 电机通道 (0-based index, 对应 ADC 通道) */
-#define MOTOR_1  0
-#define MOTOR_2  1
-#define MOTOR_3  2
-#define MOTOR_4  3
-#define MOTOR_5  4
-#define MOTOR_6  5
-#define MOTOR_7  6
-#define MOTOR_8  7
+#define MOTOR_1 0
+#define MOTOR_2 1
+#define MOTOR_3 2
+#define MOTOR_4 3
+#define MOTOR_5 4
+#define MOTOR_6 5
+#define MOTOR_7 6
+#define MOTOR_8 7
 
 /**
  * @brief 电机方向 / 制动模式
  */
 enum MotorDir {
-    kMotorDir_Stop   = 0,  /* IN1=0, IN2=0 (coast) */
-    kMotorDir_Forward,     /* IN1=PWM, IN2=0 */
-    kMotorDir_Reverse,     /* IN1=0, IN2=PWM */
-    kMotorDir_Brake,       /* IN1=1, IN2=1 */
+    kMotorDir_Stop = 0, /* IN1=0, IN2=0 (coast) */
+    kMotorDir_Forward,  /* IN1=PWM, IN2=0 */
+    kMotorDir_Reverse,  /* IN1=0, IN2=PWM */
+    kMotorDir_Brake,    /* IN1=1, IN2=1 */
 };
 
 /**
@@ -53,13 +54,13 @@ void Motor_StartAdcConversion(void);
  * @brief 电机运动状态
  */
 struct MotorState {
-    uint16_t target_adc_;    /* 目标位置 (0~4095) */
-    uint16_t current_adc_;   /* 当前位置 (0~4095) */
-    enum MotorDir dir_;      /* 当前方向 */
-    uint16_t duty_;          /* 当前占空比 */
-    struct PidCtx pid_;      /* PID 控制器 */
-    bool active_;            /* true=正在闭环寻找目标 */
-    uint16_t timeout_;       /* 超时计数，递减到0停止 */
+    uint16_t target_adc_;  /* 目标位置 (0~4095) */
+    uint16_t current_adc_; /* 当前位置 (0~4095) */
+    enum MotorDir dir_;    /* 当前方向 */
+    uint16_t duty_;        /* 当前占空比 */
+    struct PidCtx pid_;    /* PID 控制器 */
+    bool active_;          /* true=正在闭环寻找目标 */
+    uint16_t timeout_;     /* 超时计数，递减到0停止 */
 };
 
 /**
@@ -84,6 +85,15 @@ void Motor_SetTarget(uint8_t ch, uint16_t target_adc);
  * @brief 停止所有电机
  */
 void Motor_StopAll(void);
+
+/**
+ * @brief 设置指定电机的 PID 参数
+ * @param ch 电机序号 (0~7), 0xFF=全部
+ * @param kp 比例增益
+ * @param ki 积分增益
+ * @param kd 微分增益
+ */
+void Motor_SetPid(uint8_t ch, float kp, float ki, float kd);
 
 /**
  * @brief 检查 ADC 数据是否就绪

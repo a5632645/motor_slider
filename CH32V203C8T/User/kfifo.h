@@ -7,18 +7,19 @@
  */
 
 #pragma once
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
+
 
 /**
  * @brief KFIFO 环形缓冲区结构
  */
 struct Kfifo {
-    uint32_t wpos;    /**< 写指针（非取模） */
-    uint32_t rpos;    /**< 读指针（非取模） */
-    uint32_t mask;    /**< data 数组长度 - 1（须为 2^n - 1） */
-    uint8_t data[];   /**< 柔性数组成员，实际缓冲区 */
+    uint32_t wpos;  /**< 写指针（非取模） */
+    uint32_t rpos;  /**< 读指针（非取模） */
+    uint32_t mask;  /**< data 数组长度 - 1（须为 2^n - 1） */
+    uint8_t data[]; /**< 柔性数组成员，实际缓冲区 */
 };
 
 /**
@@ -91,7 +92,8 @@ static inline uint8_t Kfifo_Pop(struct Kfifo* f) {
  */
 static inline uint32_t Kfifo_TryPush(struct Kfifo* f, const uint8_t* src, uint32_t count) {
     uint32_t free = Kfifo_FreeSpace(f);
-    if (count > free) count = free;
+    if (count > free)
+        count = free;
 
     uint32_t wpos = f->wpos & f->mask;
     uint32_t till_end = (f->mask + 1) - wpos;
@@ -118,7 +120,8 @@ static inline uint32_t Kfifo_TryPush(struct Kfifo* f, const uint8_t* src, uint32
  */
 static inline uint32_t Kfifo_Read(struct Kfifo* f, uint8_t* dst, uint32_t count) {
     uint32_t size = Kfifo_Size(f);
-    if (count > size) count = size;
+    if (count > size)
+        count = size;
 
     uint32_t rpos = f->rpos & f->mask;
     uint32_t till_end = (f->mask + 1) - rpos;

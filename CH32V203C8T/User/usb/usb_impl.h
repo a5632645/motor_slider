@@ -29,20 +29,20 @@ enum UsbEndpointNumber {
 
 /* HID0/HID1 端点常量 */
 enum {
-    kHidEpAddr_In      = 0x81,
-    kHidEpMpsize       = 64,
-    kHidReportSize     = 64,
-    kHid1EpAddr_In     = 0x82,
-    kHid1EpAddr_Out    = 0x03,
-    kHid1EpMpsize      = 64,
+    kHidEpAddr_In = 0x81,
+    kHidEpMpsize = 64,
+    kHidReportSize = 64,
+    kHid1EpAddr_In = 0x82,
+    kHid1EpAddr_Out = 0x03,
+    kHid1EpMpsize = 64,
 };
 
 /* HID1 64 字节状态报告格式偏移 */
-#define HID1_STATUS_FLAGS    0   /* uint8, bit0=running */
-#define HID1_ACTIVE_FLAGS    1   /* uint8, 每路 1 bit active */
-#define HID1_ADC(i)          (2 + (i) * 2)   /* uint16 LE, 8路 */
-#define HID1_TARGET(i)       (18 + (i) * 2)  /* uint16 LE, 8路 */
-#define HID1_DUTY(i)         (34 + (i) * 2)  /* uint16 LE, 8路 */
+#define HID1_STATUS_FLAGS 0              /* uint8, bit0=running */
+#define HID1_ACTIVE_FLAGS 1              /* uint8, 每路 1 bit active */
+#define HID1_ADC(i)       (2 + (i) * 2)  /* uint16 LE, 8路 */
+#define HID1_TARGET(i)    (18 + (i) * 2) /* uint16 LE, 8路 */
+#define HID1_DUTY(i)      (34 + (i) * 2) /* uint16 LE, 8路 */
 
 void HID_Init(void);
 uint32_t HID_Write(const uint8_t* data, uint32_t len);

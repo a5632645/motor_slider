@@ -1,9 +1,10 @@
 #include <string.h>
 
-#include "usb_hardware.h"
-#include "usb_device.h"
-#include "usb_impl.h"
 #include "debug.h"
+#include "usb_device.h"
+#include "usb_hardware.h"
+#include "usb_impl.h"
+
 
 struct UsbDevice usb_device;
 
@@ -19,7 +20,7 @@ static void UsbDevice_EpOutComplete(struct UsbDevice* device, uint8_t ep_num);
 
 void UsbDevice_Init() {
     USBFSD->BASE_CTRL = USBFS_UC_CLR_ALL | USBFS_UC_RESET_SIE;
-    Delay_Us (10);
+    Delay_Us(10);
     USBFSD->BASE_CTRL &= ~USBFS_UC_RESET_SIE;
     USBFSD->BASE_CTRL = USBFS_UC_DMA_EN | USBFS_UC_INT_BUSY;
     USBFSD->INT_EN = USBFS_UIE_BUS_RST | USBFS_UIE_TRANSFER | USBFS_UIE_SUSPEND;
@@ -30,10 +31,9 @@ void UsbDevice_Init() {
 
 /**
  * @brief handle usb IRQ
- * 
+ *
  */
-__attribute__((interrupt("WCH-Interrupt-fast"), used))
-void USBFS_IRQHandler(void) {
+__attribute__((interrupt("WCH-Interrupt-fast"), used)) void USBFS_IRQHandler(void) {
     uint8_t intflag = USBFSD->INT_FG;
     uint8_t intst = USBFSD->INT_ST;
 
@@ -134,9 +134,9 @@ void USBFS_IRQHandler(void) {
 
 /**
  * @brief handle usb standard request
- * 
- * @param device 
- * @param allow 
+ *
+ * @param device
+ * @param allow
  */
 static void UsbDevice_HandleStandardRequest(struct UsbDevice* device, bool* allow_operation) {
     switch (UsbSetupRequest_GetStandardRequest(&device->setup_request)) {
@@ -171,7 +171,7 @@ static void UsbDevice_HandleStandardRequest(struct UsbDevice* device, bool* allo
             uint8_t alter = UsbImpl_GetInterfaceAlter(interface_no, allow_operation);
             if (*allow_operation) {
                 *(uint8_t*)device->usb_ep0_buffer = alter;
-                device->ep0.transfer_remain = 1;                
+                device->ep0.transfer_remain = 1;
             }
             break;
         }
@@ -213,8 +213,10 @@ static void UsbDevice_HandleStandardRequest(struct UsbDevice* device, bool* allo
         case kUsbStandardRequest_GetDeviceStatus: {
             *allow_operation = true;
             uint16_t t = 0;
-            if (device->device_status.self_power)   t |= 0x0001;
-            if (device->device_status.remote_wakeup) t |= 0x0002;
+            if (device->device_status.self_power)
+                t |= 0x0001;
+            if (device->device_status.remote_wakeup)
+                t |= 0x0002;
             *(uint16_t*)device->usb_ep0_buffer = t;
             device->ep0.transfer_remain = 2;
             break;

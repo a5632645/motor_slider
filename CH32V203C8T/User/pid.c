@@ -13,8 +13,7 @@
  *
  * @return  none
  */
-void Pid_Init(struct PidCtx *pid, float kp, float ki, float kd)
-{
+void Pid_Init(struct PidCtx* pid, float kp, float ki, float kd) {
     pid->kp = kp;
     pid->ki = ki;
     pid->kd = kd;
@@ -36,8 +35,7 @@ void Pid_Init(struct PidCtx *pid, float kp, float ki, float kd)
  *
  * @return  float  控制输出（范围 output_min_ ~ output_max_）
  */
-float Pid_Update(struct PidCtx *pid, float setpoint, float feedback)
-{
+float Pid_Update(struct PidCtx* pid, float setpoint, float feedback) {
     float error = setpoint - feedback;
     float p_term = pid->kp * error;
 
@@ -69,8 +67,7 @@ float Pid_Update(struct PidCtx *pid, float setpoint, float feedback)
  *
  * @return  none
  */
-void Pid_Reset(struct PidCtx *pid)
-{
+void Pid_Reset(struct PidCtx* pid) {
     pid->integral_ = 0.0f;
     pid->prev_error_ = 0.0f;
 }

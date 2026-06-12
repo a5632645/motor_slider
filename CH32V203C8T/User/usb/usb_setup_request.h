@@ -1,6 +1,7 @@
 #pragma once
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+
 
 struct UsbSetupRequest {
     uint8_t bmRequestType;

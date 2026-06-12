@@ -2,11 +2,12 @@
 
 #include <string.h>
 
+#include "config.h"
+#include "kfifo.h"
+#include "motor.h"
 #include "usb_desc.h"
 #include "usb_hardware.h"
-#include "kfifo.h"
-#include "config.h"
-#include "motor.h"
+
 
 // --------------------------------------------------------------------------------
 // FIFO buffer
@@ -20,17 +21,14 @@ static struct {
 };
 
 /* 64-byte HID report buffer (must be 4-byte aligned for DMA) */
-__attribute__((aligned(4)))
-static uint8_t hid_report_buf[kHidReportSize];
+__attribute__((aligned(4))) static uint8_t hid_report_buf[kHidReportSize];
 
 static bool hid_tx_busy;
 static uint8_t hid_idle;
 
 /* HID1 缓冲区 */
-__attribute__((aligned(4)))
-static uint8_t hid1_report_buf_[kHid1EpMpsize];
-__attribute__((aligned(4)))
-static uint8_t hid1_rx_buf_[kHid1EpMpsize];
+__attribute__((aligned(4))) static uint8_t hid1_report_buf_[kHid1EpMpsize];
+__attribute__((aligned(4))) static uint8_t hid1_rx_buf_[kHid1EpMpsize];
 static volatile uint32_t hid1_rx_len_;
 static volatile bool hid1_rx_pending_;
 static bool hid1_tx_busy_;
@@ -107,8 +105,7 @@ void UsbImpl_HandleVendorRequest(struct UsbDevice* device, bool* allow, bool set
     (void)setup_phase;
 }
 
-void UsbImpl_HandleSof(void) {
-}
+void UsbImpl_HandleSof(void) {}
 
 void UsbImpl_SetInterfaceAlter(uint8_t interface, uint8_t alter, bool* allow) {
     *allow = (interface == 0);
@@ -151,8 +148,7 @@ void UsbImpl_GetDescriptor(struct UsbDevice* device, bool* allow) {
     }
 }
 
-static void _HidInHandler(void)
-{
+static void _HidInHandler(void) {
     hid_tx_busy = false;
 
     /* Try to send next packet if data available */
@@ -166,8 +162,10 @@ static void _HidInHandler(void)
             uint32_t chunk;
             uint8_t* src = Kfifo_ContinueReadBegin(&hid_fifo_.fifo, &chunk);
             uint32_t need = to_read - total;
-            if (chunk > need) chunk = need;
-            if (chunk == 0) break;
+            if (chunk > need)
+                chunk = need;
+            if (chunk == 0)
+                break;
             memcpy(hid_report_buf + 1 + total, src, chunk);
             Kfifo_ContinueReadEnd(&hid_fifo_.fifo, chunk);
             total += chunk;
@@ -177,12 +175,10 @@ static void _HidInHandler(void)
         hid_tx_busy = true;
 
         USBFSD->UEP1_TX_LEN = kHidReportSize;
-        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK)
-                              | USBFS_UEP_T_RES_ACK;
+        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
     }
     else {
-        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK)
-                              | USBFS_UEP_T_RES_NAK;
+        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
     }
 }
 
@@ -196,8 +192,7 @@ void UsbImpl_EpInComplete(uint8_t ep_num) {
             hid1_tx_busy_ = false;
             /* 仅 toggle – 下次 HID1_SendStatus 会重新武装 */
             USBFSD->UEP2_TX_CTRL ^= USBFS_UEP_T_TOG;
-            USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK)
-                        | USBFS_UEP_T_RES_NAK;
+            USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
             break;
         default:
             break;
@@ -209,58 +204,70 @@ void UsbImpl_EpOutComplete(uint8_t ep_num, uint16_t count) {
         /* 阻挡型: 置 pending + 设 NAK, HID1_Read 消费后重新 ACK */
         hid1_rx_len_ = (count < kHid1EpMpsize) ? count : kHid1EpMpsize;
         hid1_rx_pending_ = true;
-        USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK)
-                              | USBFS_UEP_R_RES_NAK;
+        USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_NAK;
     }
 }
 
-void HID1_Init(void)
-{
+void HID1_Init(void) {
     hid1_tx_busy_ = false;
     hid1_rx_pending_ = false;
     hid1_rx_len_ = 0;
 }
 
-bool HID1_Read(uint8_t* buf, uint32_t* len)
-{
-    if (!hid1_rx_pending_) return false;
+bool HID1_Read(uint8_t* buf, uint32_t* len) {
+    if (!hid1_rx_pending_)
+        return false;
     uint32_t cpy = hid1_rx_len_ < kHid1EpMpsize ? hid1_rx_len_ : kHid1EpMpsize;
     memcpy(buf, hid1_rx_buf_, cpy);
-    if (len) *len = cpy;
+    if (len)
+        *len = cpy;
     hid1_rx_pending_ = false;
     /* 重新武装 EP3 RX — 阻挡解除, 接收下一帧 */
-    USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK)
-                          | USBFS_UEP_R_RES_ACK;
+    USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_ACK;
     return true;
 }
 
-void HID1_ProcessCommand(void)
-{
+void HID1_ProcessCommand(void) {
     uint8_t buf[kHid1EpMpsize];
     uint32_t len;
-    if (!HID1_Read(buf, &len)) return;
-    if (len == 0) return;
+    if (!HID1_Read(buf, &len))
+        return;
+    if (len == 0)
+        return;
 
-    /* buf[0] = 0x00 (幻影 Report ID), 命令从 buf[1] 开始 */
     switch (buf[0]) {
-    case 0x01: /* 设置目标位置 */
-        if (len >= 18) {
-            printf("[HID1] 设置目标:");
-            for (int i = 0; i < 8; i++) {
-                uint16_t target = (uint16_t)buf[1 + i*2]
-                                | (uint16_t)(buf[1 + i*2 + 1] << 8);
-                Motor_SetTarget((uint8_t)i, target);
-                printf(" CH%d=%d", i + 1, target);
+        case 0x01: /* 设置目标位置 */
+            if (len >= 18) {
+                printf("[HID1] 设置目标:");
+                for (int i = 0; i < 8; i++) {
+                    uint16_t target = (uint16_t)buf[1 + i * 2] | (uint16_t)(buf[1 + i * 2 + 1] << 8);
+                    Motor_SetTarget((uint8_t)i, target);
+                    printf(" CH%d=%d", i + 1, target);
+                }
+                printf("\r\n");
             }
-            printf("\r\n");
-        }
-        break;
-    case 0x03: /* 停止所有电机 */
-        Motor_StopAll();
-        printf("[HID1] 停止所有电机\r\n");
-        break;
-    default:
-        break;
+            break;
+        case 0x03: /* 停止所有电机 */
+            Motor_StopAll();
+            printf("[HID1] 停止所有电机\r\n");
+            break;
+        case 0x04: /* 设置 PID 参数 */
+            if (len >= 9) {
+                uint8_t ch = buf[1];
+                float kp = (float)((uint16_t)buf[2] | (uint16_t)(buf[3] << 8)) / 1000.0f;
+                float ki = (float)((uint16_t)buf[4] | (uint16_t)(buf[5] << 8)) / 10000.0f;
+                float kd = (float)((uint16_t)buf[6] | (uint16_t)(buf[7] << 8)) / 1000.0f;
+                Motor_SetPid(ch, kp, ki, kd);
+                if (ch == 0xFF) {
+                    printf("[HID1] PID全局: Kp=%.3f Ki=%.4f Kd=%.3f\r\n", kp, ki, kd);
+                }
+                else {
+                    printf("[HID1] PID CH%d: Kp=%.3f Ki=%.4f Kd=%.3f\r\n", ch + 1, kp, ki, kd);
+                }
+            }
+            break;
+        default:
+            break;
     }
 }
 
@@ -275,8 +282,7 @@ void UsbImpl_ClearStallEndpoint(uint8_t address) {
 // --------------------------------------------------------------------------------
 // HID Public API
 // --------------------------------------------------------------------------------
-bool HID_IsConnected(void)
-{
+bool HID_IsConnected(void) {
     return usb_device.using_configuration != 0;
 }
 
@@ -304,19 +310,18 @@ void HID_Flush(void) {
 // --------------------------------------------------------------------------------
 // HID1 Status Reporting
 // --------------------------------------------------------------------------------
-void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8], uint8_t active_flags)
-{
+void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8], uint8_t active_flags) {
     uint8_t* buf = hid1_report_buf_;
 
-    buf[HID1_STATUS_FLAGS] = 0x01;  /* running */
+    buf[HID1_STATUS_FLAGS] = 0x01; /* running */
     buf[HID1_ACTIVE_FLAGS] = active_flags;
 
     for (int i = 0; i < 8; i++) {
-        buf[HID1_ADC(i)]     = (uint8_t)(adc[i] & 0xFF);
+        buf[HID1_ADC(i)] = (uint8_t)(adc[i] & 0xFF);
         buf[HID1_ADC(i) + 1] = (uint8_t)((adc[i] >> 8) & 0xFF);
-        buf[HID1_TARGET(i)]     = (uint8_t)(target[i] & 0xFF);
+        buf[HID1_TARGET(i)] = (uint8_t)(target[i] & 0xFF);
         buf[HID1_TARGET(i) + 1] = (uint8_t)((target[i] >> 8) & 0xFF);
-        buf[HID1_DUTY(i)]     = (uint8_t)(duty[i] & 0xFF);
+        buf[HID1_DUTY(i)] = (uint8_t)(duty[i] & 0xFF);
         buf[HID1_DUTY(i) + 1] = (uint8_t)((duty[i] >> 8) & 0xFF);
     }
 
@@ -324,7 +329,6 @@ void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint
     if (!hid1_tx_busy_) {
         hid1_tx_busy_ = true;
         USBFSD->UEP2_TX_LEN = kHid1EpMpsize;
-        USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK)
-                              | USBFS_UEP_T_RES_ACK;
+        USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
     }
 }

@@ -33,7 +33,7 @@ try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QStatusBar, QPlainTextEdit, QPushButton, QSplitter,
-        QSlider, QSizePolicy,
+        QSlider, QSizePolicy, QComboBox, QDoubleSpinBox,
     )
     from PyQt6.QtGui import (
         QColor, QPalette, QFont, QPainter, QPen,
@@ -59,6 +59,11 @@ OFFSET_STATUS = 0
 OFFSET_RSV     = 1
 OFFSET_ACTIVE_FLAGS = 1   # uint8, 每路 1 bit active
 OFFSET_ADC     = 2       # uint16 LE × 8,  偏移 2～17
+
+# PID 定点数缩放 (与固件一致)
+PID_SCALE_KP = 1000
+PID_SCALE_KI = 10000
+PID_SCALE_KD = 1000
 OFFSET_TARGET  = 18      # uint16 LE × 8,  偏移 18～33
 OFFSET_DUTY    = 34      # uint16 LE × 8,  偏移 34～49
 
@@ -128,11 +133,35 @@ class HidWorker(QThread):
     def send_targets(self, targets):
         """通过 HID1 OUT 发送 8 路目标值 (线程安全)"""
         report = bytearray(65)
-        report[0] = 0x00   # 幻影 Report ID (hidapi 要求, 无 0x85 时必须)
+        report[0] = 0x00   # 幻影 Report ID
         report[1] = 0x01   # 命令 ID: 设置目标
         for i in range(8):
             report[2 + i*2]     = targets[i] & 0xFF
             report[2 + i*2 + 1] = (targets[i] >> 8) & 0xFF
+        with QMutexLocker(self._mutex):
+            if self._device is not None:
+                try:
+                    self._device.write(bytes(report))
+                except Exception:
+                    pass
+
+    def send_pid(self, channel: int, kp: float, ki: float, kd: float):
+        """通过 HID1 OUT 发送 PID 参数"""
+        report = bytearray(65)
+        report[0] = 0x00   # 幻影 Report ID
+        report[1] = 0x04   # 命令 ID: 设置PID
+        report[2] = channel
+        def _u16(v):
+            return int(v) & 0xFFFF
+        kp_int = _u16(kp * PID_SCALE_KP)
+        ki_int = _u16(ki * PID_SCALE_KI)
+        kd_int = _u16(kd * PID_SCALE_KD)
+        report[3] = kp_int & 0xFF
+        report[4] = (kp_int >> 8) & 0xFF
+        report[5] = ki_int & 0xFF
+        report[6] = (ki_int >> 8) & 0xFF
+        report[7] = kd_int & 0xFF
+        report[8] = (kd_int >> 8) & 0xFF
         with QMutexLocker(self._mutex):
             if self._device is not None:
                 try:
@@ -498,6 +527,55 @@ class MainWindow(QMainWindow):
         pots_layout.addWidget(pots_row)
         splitter.addWidget(pots_container)
 
+        # === 中: PID 控制面板 ===
+        pid_container = QWidget()
+        pid_layout = QHBoxLayout(pid_container)
+        pid_layout.setContentsMargins(0, 0, 0, 0)
+        pid_layout.setSpacing(6)
+
+        pid_layout.addWidget(QLabel("PID:"))
+
+        self._pid_ch = QComboBox()
+        self._pid_ch.addItem("ALL", 0xFF)
+        for i in range(8):
+            self._pid_ch.addItem(f"CH{i+1}", i)
+        self._pid_ch.setFixedWidth(70)
+        pid_layout.addWidget(self._pid_ch)
+
+        pid_layout.addWidget(QLabel("Kp"))
+        self._pid_kp = QDoubleSpinBox()
+        self._pid_kp.setRange(0.0, 100.0)
+        self._pid_kp.setDecimals(3)
+        self._pid_kp.setSingleStep(0.1)
+        self._pid_kp.setValue(0.5)
+        self._pid_kp.setFixedWidth(80)
+        pid_layout.addWidget(self._pid_kp)
+
+        pid_layout.addWidget(QLabel("Ki"))
+        self._pid_ki = QDoubleSpinBox()
+        self._pid_ki.setRange(0.0, 100.0)
+        self._pid_ki.setDecimals(4)
+        self._pid_ki.setSingleStep(0.01)
+        self._pid_ki.setValue(0.01)
+        self._pid_ki.setFixedWidth(90)
+        pid_layout.addWidget(self._pid_ki)
+
+        pid_layout.addWidget(QLabel("Kd"))
+        self._pid_kd = QDoubleSpinBox()
+        self._pid_kd.setRange(0.0, 100.0)
+        self._pid_kd.setDecimals(3)
+        self._pid_kd.setSingleStep(0.1)
+        self._pid_kd.setValue(0.1)
+        self._pid_kd.setFixedWidth(80)
+        pid_layout.addWidget(self._pid_kd)
+
+        self._pid_btn = QPushButton("发送")
+        self._pid_btn.setFixedWidth(50)
+        pid_layout.addWidget(self._pid_btn)
+
+        pid_layout.addStretch()
+        splitter.addWidget(pid_container)
+
         # === 下: 调试控制台 ===
         console_container = QWidget()
         console_layout = QVBoxLayout(console_container)
@@ -562,6 +640,8 @@ class MainWindow(QMainWindow):
         # PotWidget Slider -> HID1 OUT
         for pot in self._pots:
             pot.target_changed.connect(self._on_pot_target_changed)
+        # PID 发送按钮
+        self._pid_btn.clicked.connect(self._on_pid_send)
 
     def _on_hid1_connected(self):
         self._conn_hid1_label.setText("HID1:●")
@@ -615,6 +695,14 @@ class MainWindow(QMainWindow):
         if 0 <= channel < 8:
             self._current_targets[channel] = value
             self._worker.send_targets(self._current_targets)
+
+    def _on_pid_send(self):
+        """PID 发送按钮 -> 打包参数 -> HID1 OUT"""
+        ch = self._pid_ch.currentData()
+        kp = self._pid_kp.value()
+        ki = self._pid_ki.value()
+        kd = self._pid_kd.value()
+        self._worker.send_pid(ch, kp, ki, kd)
 
     def _on_data(self, report: StatusReport):
         self._latest_report = report
