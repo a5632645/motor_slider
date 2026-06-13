@@ -278,11 +278,11 @@ void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
         duty = 999;
 
     if (ch == MOTOR_3) {
-        if (dir == kMotorDir_Forward) {
+        if (dir == kMotorDir_Reverse) {
             GPIO_SetBits(GPIOB, GPIO_Pin_14);
             GPIO_ResetBits(GPIOB, GPIO_Pin_15);
         }
-        else if (dir == kMotorDir_Reverse) {
+        else if (dir == kMotorDir_Forward) {
             GPIO_ResetBits(GPIOB, GPIO_Pin_14);
             GPIO_SetBits(GPIOB, GPIO_Pin_15);
         }
@@ -301,12 +301,12 @@ void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
             TIM_SetCompare3(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_2: /* TIM2 CH4=IN1, CH3=IN2 */
-            TIM_SetCompare3(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare4(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare4(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_4: /* TIM1 CH2=IN1, CH1=IN2 */
-            TIM_SetCompare1(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare2(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare2(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare1(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case MOTOR_5: /* TIM1 CH3=IN1, CH4=IN2 */
             TIM_SetCompare4(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
