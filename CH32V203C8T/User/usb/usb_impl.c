@@ -37,7 +37,13 @@ static bool hid1_tx_busy_;
  * HID1 OUT 报告格式 (64 字节):
  *   byte 0:  幻影 Report ID = 0x00 (hidapi 要求)
  *   byte 1:  命令 ID
- *     0x01:  设置目标位置 (bytes 2-17: 8路目标值 × uint16 LE)
+ *     0x01:  设置目标位置
+ *       byte 2:   count (本次设置的电机数量 N)
+ *       byte 3:   电机序号 0
+ *       byte 4-5:  位置 0 (uint16 LE)
+ *       byte 6:   电机序号 1
+ *       byte 7-8:  位置 1 (uint16 LE)
+ *       ... 共 N 组
  *     0x03:  停止所有电机
  */
 
@@ -236,15 +242,24 @@ void HID1_ProcessCommand(void) {
         return;
 
     switch (buf[0]) {
-        case 0x01: /* 设置目标位置 */
-            if (len >= 18) {
-                printf("[HID1] 设置目标:");
-                for (int i = 0; i < 8; i++) {
-                    uint16_t target = (uint16_t)buf[1 + i * 2] | (uint16_t)(buf[1 + i * 2 + 1] << 8);
-                    Motor_SetTarget((uint8_t)i, target);
-                    printf(" CH%d=%d", i + 1, target);
+        case 0x01: /* 设置目标位置 — 可变数量电机 */
+            {
+                uint8_t count = buf[1];
+                if (count > 8) count = 8;
+                uint32_t need = (uint32_t)2 + (uint32_t)count * 3;
+                if (len >= need && count > 0) {
+                    printf("[HID1] 设置目标:");
+                    for (uint8_t j = 0; j < count; j++) {
+                        uint8_t idx = buf[2 + j * 3];
+                        uint16_t pos = (uint16_t)buf[3 + j * 3]
+                                     | (uint16_t)(buf[4 + j * 3] << 8);
+                        if (idx < MOTOR_COUNT) {
+                            Motor_SetTarget(idx, pos);
+                            printf(" CH%d=%d", idx + 1, pos);
+                        }
+                    }
+                    printf("\r\n");
                 }
-                printf("\r\n");
             }
             break;
         case 0x03: /* 停止所有电机 */

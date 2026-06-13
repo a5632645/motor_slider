@@ -130,14 +130,15 @@ class HidWorker(QThread):
         self._device: Optional[hid.device] = None
         self._mutex = QMutex()
 
-    def send_targets(self, targets):
-        """通过 HID1 OUT 发送 8 路目标值 (线程安全)"""
+    def send_target(self, channel: int, value: int):
+        """通过 HID1 OUT 发送单路目标位置 (线程安全)"""
         report = bytearray(65)
         report[0] = 0x00   # 幻影 Report ID
         report[1] = 0x01   # 命令 ID: 设置目标
-        for i in range(8):
-            report[2 + i*2]     = targets[i] & 0xFF
-            report[2 + i*2 + 1] = (targets[i] >> 8) & 0xFF
+        report[2] = 1      # count = 1 (单路)
+        report[3] = channel
+        report[4] = value & 0xFF
+        report[5] = (value >> 8) & 0xFF
         with QMutexLocker(self._mutex):
             if self._device is not None:
                 try:
@@ -691,10 +692,10 @@ class MainWindow(QMainWindow):
         self._console.appendPlainText(text)
 
     def _on_pot_target_changed(self, channel: int, value: int):
-        """Slider 拖动 -> 更新目标列表 -> 发送 HID1 OUT"""
+        """Slider 拖动 -> 更新目标列表 -> 发送 HID1 OUT (仅单路)"""
         if 0 <= channel < 8:
             self._current_targets[channel] = value
-            self._worker.send_targets(self._current_targets)
+            self._worker.send_target(channel, value)
 
     def _on_pid_send(self):
         """PID 发送按钮 -> 打包参数 -> HID1 OUT"""
