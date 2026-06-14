@@ -243,25 +243,24 @@ void HID1_ProcessCommand(void) {
 
     switch (buf[0]) {
         case 0x01: /* 设置目标位置 — 可变数量电机 */
-            {
-                uint8_t count = buf[1];
-                if (count > 8) count = 8;
-                uint32_t need = (uint32_t)2 + (uint32_t)count * 3;
-                if (len >= need && count > 0) {
-                    printf("[HID1] 设置目标:");
-                    for (uint8_t j = 0; j < count; j++) {
-                        uint8_t idx = buf[2 + j * 3];
-                        uint16_t pos = (uint16_t)buf[3 + j * 3]
-                                     | (uint16_t)(buf[4 + j * 3] << 8);
-                        if (idx < MOTOR_COUNT) {
-                            Motor_SetTarget(idx, pos);
-                            printf(" CH%d=%d", idx + 1, pos);
-                        }
+        {
+            uint8_t count = buf[1];
+            if (count > 8)
+                count = 8;
+            uint32_t need = (uint32_t)2 + (uint32_t)count * 3;
+            if (len >= need && count > 0) {
+                printf("[HID1] 设置目标:");
+                for (uint8_t j = 0; j < count; j++) {
+                    uint8_t idx = buf[2 + j * 3];
+                    uint16_t pos = (uint16_t)buf[3 + j * 3] | (uint16_t)(buf[4 + j * 3] << 8);
+                    if (idx < MOTOR_COUNT) {
+                        Motor_SetTarget(idx, pos);
+                        printf(" CH%d=%d", idx + 1, pos);
                     }
-                    printf("\r\n");
                 }
+                printf("\r\n");
             }
-            break;
+        } break;
         case 0x03: /* 停止所有电机 */
             Motor_StopAll();
             printf("[HID1] 停止所有电机\r\n");

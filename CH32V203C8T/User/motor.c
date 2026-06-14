@@ -277,52 +277,50 @@ void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
     if (duty > 999)
         duty = 999;
 
-    if (ch == MOTOR_3) {
-        if (dir == kMotorDir_Reverse) {
-            GPIO_SetBits(GPIOB, GPIO_Pin_14);
-            GPIO_ResetBits(GPIOB, GPIO_Pin_15);
-        }
-        else if (dir == kMotorDir_Forward) {
-            GPIO_ResetBits(GPIOB, GPIO_Pin_14);
-            GPIO_SetBits(GPIOB, GPIO_Pin_15);
-        }
-        else if (dir == kMotorDir_Brake) {
-            GPIO_SetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
-        }
-        else {
-            GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
-        }
-        return;
-    }
-
     switch (ch) {
-        case MOTOR_1: /* TIM3 CH3=IN1, CH4=IN2 */
-            TIM_SetCompare4(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare3(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+        case MOTOR_1: /* TIM4 CH3=IN1, CH4=IN2 */
+            TIM_SetCompare4(TIM4, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM4, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_2: /* TIM2 CH4=IN1, CH3=IN2 */
-            TIM_SetCompare4(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare3(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
-            break;
-        case MOTOR_4: /* TIM1 CH2=IN1, CH1=IN2 */
-            TIM_SetCompare2(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare1(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
-            break;
-        case MOTOR_5: /* TIM1 CH3=IN1, CH4=IN2 */
-            TIM_SetCompare4(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare3(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
-            break;
-        case MOTOR_6: /* TIM2 CH1=IN1, CH2=IN2 */
-            TIM_SetCompare2(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare1(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
-            break;
-        case MOTOR_7: /* TIM3 CH1=IN1, CH2=IN2 */
+        case MOTOR_2: /* TIM3 CH1=IN1, CH2=IN2 */
             TIM_SetCompare2(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare1(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_8: /* TIM4 CH3=IN1, CH4=IN2 */
-            TIM_SetCompare4(TIM4, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
-            TIM_SetCompare3(TIM4, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+        case MOTOR_3: /* TIM2 CH1=IN1, CH2=IN2 */
+            TIM_SetCompare2(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare1(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            break;
+        case MOTOR_4: /* TIM1 CH3=IN1, CH4=IN2 */
+            TIM_SetCompare4(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            break;
+        case MOTOR_5: /* TIM1 CH2=IN1, CH1=IN2 */
+            TIM_SetCompare2(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare1(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            break;
+        case MOTOR_6: /* GPIO PB14=IN1, PB15=IN2 */
+            if (dir == kMotorDir_Reverse) {
+                GPIO_SetBits(GPIOB, GPIO_Pin_14);
+                GPIO_ResetBits(GPIOB, GPIO_Pin_15);
+            }
+            else if (dir == kMotorDir_Forward) {
+                GPIO_ResetBits(GPIOB, GPIO_Pin_14);
+                GPIO_SetBits(GPIOB, GPIO_Pin_15);
+            }
+            else if (dir == kMotorDir_Brake) {
+                GPIO_SetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
+            }
+            else {
+                GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
+            }
+            break;
+        case MOTOR_7: /* TIM2 CH4=IN1, CH3=IN2 */
+            TIM_SetCompare4(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
+            break;
+        case MOTOR_8: /* TIM3 CH3=IN1, CH4=IN2 */
+            TIM_SetCompare4(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
+            TIM_SetCompare3(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
     }
 }
@@ -375,71 +373,52 @@ void Motor_RunControlLoop(void) {
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
         /* ADC 物理通道与电机序号反序 (PCB 布局) */
-        uint8_t mi = (uint8_t)(MOTOR_COUNT - 1 - i);
-        motor_states_[mi].current_adc_ = motor_adc_dma_buf_[i];
+        motor_states_[i].current_adc_ = motor_adc_dma_buf_[i];
 
         /* 非活跃电机：跳过，PWM 保持 0 */
-        if (!motor_states_[mi].active_)
+        if (!motor_states_[i].active_)
             continue;
 
         /* 判断是否到达目标 */
-        int16_t diff = (int16_t)(motor_states_[mi].target_adc_ - motor_states_[mi].current_adc_);
+        int16_t diff = (int16_t)(motor_states_[i].target_adc_ - motor_states_[i].current_adc_);
         int16_t abs_diff = (diff < 0) ? -diff : diff;
         if (abs_diff <= CTRL_ERROR_THRESHOLD) {
-            motor_states_[mi].active_ = false;
-            motor_states_[mi].duty_ = 0;
-            Motor_SetPwm(mi, kMotorDir_Stop, 0);
+            motor_states_[i].active_ = false;
+            motor_states_[i].duty_ = 0;
+            Motor_SetPwm(i, kMotorDir_Stop, 0);
             continue;
         }
 
         /* 超时判断 */
-        if (motor_states_[mi].timeout_ > 0) {
-            motor_states_[mi].timeout_--;
+        if (motor_states_[i].timeout_ > 0) {
+            motor_states_[i].timeout_--;
         }
-        if (motor_states_[mi].timeout_ == 0) {
-            motor_states_[mi].active_ = false;
-            motor_states_[mi].duty_ = 0;
-            Motor_SetPwm(mi, kMotorDir_Stop, 0);
+        if (motor_states_[i].timeout_ == 0) {
+            motor_states_[i].active_ = false;
+            motor_states_[i].duty_ = 0;
+            Motor_SetPwm(i, kMotorDir_Stop, 0);
             continue;
         }
 
-        /* ── 闭环控制 ── */
-        if (mi == MOTOR_3) {
-            /* 电机 3: GPIO 开关控制 */
-            if (abs_diff > MOTOR3_DEADBAND) {
-                if (diff > 0) {
-                    Motor_SetPwm(mi, kMotorDir_Forward, 500);
-                }
-                else {
-                    Motor_SetPwm(mi, kMotorDir_Reverse, 500);
-                }
-            }
-            else {
-                Motor_SetPwm(mi, kMotorDir_Stop, 0);
-            }
-            continue;
-        }
-
-        /* 电机 1~2, 4~8: PID 控制 */
-        float output = Pid_Update(&motor_states_[mi].pid_, (float)motor_states_[mi].target_adc_,
-                                  (float)motor_states_[mi].current_adc_);
+        float output = Pid_Update(&motor_states_[i].pid_, (float)motor_states_[i].target_adc_,
+                                  (float)motor_states_[i].current_adc_);
 
         if (output > 0) {
-            motor_states_[mi].dir_ = kMotorDir_Forward;
+            motor_states_[i].dir_ = kMotorDir_Forward;
             uint16_t raw = (uint16_t)(output > 999.0f ? 999 : (uint16_t)output);
-            motor_states_[mi].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
+            motor_states_[i].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
         }
         else if (output < 0) {
-            motor_states_[mi].dir_ = kMotorDir_Reverse;
+            motor_states_[i].dir_ = kMotorDir_Reverse;
             uint16_t raw = (uint16_t)(-output > 999.0f ? 999 : (uint16_t)(-output));
-            motor_states_[mi].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
+            motor_states_[i].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
         }
         else {
-            motor_states_[mi].dir_ = kMotorDir_Stop;
-            motor_states_[mi].duty_ = 0;
+            motor_states_[i].dir_ = kMotorDir_Stop;
+            motor_states_[i].duty_ = 0;
         }
 
-        Motor_SetPwm(mi, motor_states_[mi].dir_, motor_states_[mi].duty_);
+        Motor_SetPwm(i, motor_states_[i].dir_, motor_states_[i].duty_);
     }
 }
 
