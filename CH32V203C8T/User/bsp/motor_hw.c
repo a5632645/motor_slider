@@ -251,8 +251,8 @@ void DMA1_Channel1_IRQHandler(void) {
 // ------------------------------------------------------------
 
 void MotorHw_Init(void) {
-    _InitAdc();
     _InitPwm();
+    _InitAdc();
 }
 
 void MotorHw_StartAdcConversion(void) {
