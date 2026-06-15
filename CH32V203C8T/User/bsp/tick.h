@@ -1,9 +1,5 @@
-/**
- * @file    tick.h
- * @brief   1ms SysTick 定时器接口
- */
-
 #pragma once
+
 #include <stdint.h>
 
 /**

@@ -1,31 +1,29 @@
-#include "motor.h"
-#include "ch32v20x.h"
+#include "motor_hw.h"
+
+#include "ch32v20x_adc.h"
 #include "ch32v20x_dma.h"
 #include "ch32v20x_gpio.h"
-#include "ch32v20x_misc.h"
 #include "ch32v20x_rcc.h"
 #include "ch32v20x_tim.h"
-#include "config.h"
-#include "pid.h"
-#include "usb/usb_impl.h"
+#include "ch32v20x_misc.h"
 
+// ------------------------------------------------------------
+// variable
+// ------------------------------------------------------------
 
-/* ADC DMA 缓冲区 */
-__attribute__((aligned(4))) volatile uint16_t motor_adc_dma_buf_[MOTOR_COUNT];
-volatile bool motor_adc_ready_;
+__attribute__((aligned(4)))
+static volatile uint16_t motor_adc_dma_buf_[kMotorIdx_Count];
+static volatile bool motor_adc_ready_;
 
-/* 电机状态数组 */
-struct MotorState motor_states_[MOTOR_COUNT];
+// ------------------------------------------------------------
+// private
+// ------------------------------------------------------------
 
-/*********************************************************************
- * @fn      Motor_InitPwm
- *
+/**
  * @brief   初始化 TIM1~TIM4 为 PWM 输出，电机 3 配置为 GPIO 控制
  *          所有定时器：ARR=999, 预分频=0 → 96kHz
- *
- * @return  none
  */
-void Motor_InitPwm(void) {
+void _InitPwm(void) {
     GPIO_InitTypeDef gpio;
     TIM_TimeBaseInitTypeDef tim;
     TIM_OCInitTypeDef oc;
@@ -156,16 +154,12 @@ void Motor_InitPwm(void) {
     GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
 }
 
-/*********************************************************************
- * @fn      Motor_InitAdc
- *
+/**
  * @brief   初始化 ADC1 常规组 8 通道 scan + DMA1 通道 1
  *          ADC 时钟 = PCLK2/8 = 12MHz, 12bit
  *          软件触发，DMA 自动搬运结果到 motor_adc_dma_buf_
- *
- * @return  none
  */
-void Motor_InitAdc(void) {
+void _InitAdc(void) {
     ADC_InitTypeDef adc;
     GPIO_InitTypeDef gpio;
     DMA_InitTypeDef dma;
@@ -184,7 +178,7 @@ void Motor_InitAdc(void) {
     dma.DMA_PeripheralBaseAddr = (uint32_t)&ADC1->RDATAR;
     dma.DMA_MemoryBaseAddr = (uint32_t)motor_adc_dma_buf_;
     dma.DMA_DIR = DMA_DIR_PeripheralSRC;
-    dma.DMA_BufferSize = MOTOR_COUNT;
+    dma.DMA_BufferSize = kMotorIdx_Count;
     dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
     dma.DMA_MemoryInc = DMA_MemoryInc_Enable;
     dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
@@ -205,7 +199,7 @@ void Motor_InitAdc(void) {
     adc.ADC_ContinuousConvMode = DISABLE;
     adc.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
     adc.ADC_DataAlign = ADC_DataAlign_Right;
-    adc.ADC_NbrOfChannel = MOTOR_COUNT;
+    adc.ADC_NbrOfChannel = kMotorIdx_Count;
     ADC_Init(ADC1, &adc);
 
     ADC_RegularChannelConfig(ADC1, ADC_Channel_0, 1, ADC_SampleTime_7Cycles5);
@@ -240,65 +234,75 @@ void Motor_InitAdc(void) {
         ;
 }
 
-/*********************************************************************
- * @fn      Motor_StartAdcConversion
- *
- * @brief   软件触发 ADC 转换，复位 DMA 计数器后使能
- *
- * @return  none
- */
-void Motor_StartAdcConversion(void) {
+// ------------------------------------------------------------
+// irq
+// ------------------------------------------------------------
+
+__attribute__((interrupt("WCH-Interrupt-fast")))
+void DMA1_Channel1_IRQHandler(void) {
+    if (DMA_GetITStatus(DMA1_IT_TC1)) {
+        DMA_ClearITPendingBit(DMA1_IT_TC1);
+        motor_adc_ready_ = true;
+    }
+}
+
+// ------------------------------------------------------------
+// public
+// ------------------------------------------------------------
+
+void MotorHw_Init(void) {
+    _InitAdc();
+    _InitPwm();
+}
+
+void MotorHw_StartAdcConversion(void) {
     /* 上次转换未完成，跳过本次触发 */
     if (!motor_adc_ready_)
         return;
 
     motor_adc_ready_ = false;
     DMA_Cmd(DMA1_Channel1, DISABLE);
-    DMA1_Channel1->CNTR = MOTOR_COUNT;
+    DMA1_Channel1->CNTR = kMotorIdx_Count;
     DMA_Cmd(DMA1_Channel1, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 }
 
-/*********************************************************************
- * @fn      Motor_SetPwm
- *
- * @brief   设置指定电机的方向和 PWM 占空比
- *
- * @param   ch    电机序号 (MOTOR_1 ~ MOTOR_8)
- * @param   dir   方向
- * @param   duty  占空比 (0~999)
- *
- * @return  none
- *
- * @note    电机 1~2, 4~8 使用硬件 PWM 定时器
- *          电机 3 使用 GPIO 软件控制
- */
-void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
+bool MotorHw_IsAdcReady(void) {
+    return motor_adc_ready_;
+}
+
+void MotorHw_GetAdcValue(uint16_t buffer[kMotorIdx_Count]) {
+    for (int i = 0; i < kMotorIdx_Count; ++i) {
+        buffer[i] = motor_adc_dma_buf_[i];
+    }
+}
+
+void MotorHw_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
     if (duty > 999)
         duty = 999;
 
     switch (ch) {
-        case MOTOR_1: /* TIM4 CH3=IN1, CH4=IN2 */
+        case kMotorIdx_0: /* TIM4 CH3=IN1, CH4=IN2 */
             TIM_SetCompare4(TIM4, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare3(TIM4, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_2: /* TIM3 CH1=IN1, CH2=IN2 */
+        case kMotorIdx_1: /* TIM3 CH1=IN1, CH2=IN2 */
             TIM_SetCompare2(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare1(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_3: /* TIM2 CH1=IN1, CH2=IN2 */
+        case kMotorIdx_2: /* TIM2 CH1=IN1, CH2=IN2 */
             TIM_SetCompare2(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare1(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_4: /* TIM1 CH3=IN1, CH4=IN2 */
+        case kMotorIdx_3: /* TIM1 CH3=IN1, CH4=IN2 */
             TIM_SetCompare4(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare3(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_5: /* TIM1 CH2=IN1, CH1=IN2 */
+        case kMotorIdx_4: /* TIM1 CH2=IN1, CH1=IN2 */
             TIM_SetCompare2(TIM1, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare1(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_6: /* GPIO PB14=IN1, PB15=IN2 */
+        case kMotorIdx_5: /* GPIO PB14=IN1, PB15=IN2 */
             if (dir == kMotorDir_Reverse) {
                 GPIO_SetBits(GPIOB, GPIO_Pin_14);
                 GPIO_ResetBits(GPIOB, GPIO_Pin_15);
@@ -314,202 +318,13 @@ void Motor_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
                 GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
             }
             break;
-        case MOTOR_7: /* TIM2 CH4=IN1, CH3=IN2 */
+        case kMotorIdx_6: /* TIM2 CH4=IN1, CH3=IN2 */
             TIM_SetCompare4(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare3(TIM2, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
-        case MOTOR_8: /* TIM3 CH3=IN1, CH4=IN2 */
+        case kMotorIdx_7: /* TIM3 CH3=IN1, CH4=IN2 */
             TIM_SetCompare4(TIM3, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
             TIM_SetCompare3(TIM3, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
     }
-}
-
-/*********************************************************************
- * @fn      DMA1_Channel1_IRQHandler
- *
- * @brief   DMA1 通道 1 传输完成中断 — ADC 数据就绪
- *          由 Motor_RunControlLoop 消费
- *
- * @return  none
- */
-__attribute__((interrupt("WCH-Interrupt-fast"))) void DMA1_Channel1_IRQHandler(void) {
-    if (DMA_GetITStatus(DMA1_IT_TC1)) {
-        DMA_ClearITPendingBit(DMA1_IT_TC1);
-        motor_adc_ready_ = true;
-    }
-}
-
-/*********************************************************************
- * @fn      Motor_InitControl
- *
- * @brief   初始化所有电机状态和 PID 参数
- *
- * @return  none
- */
-void Motor_InitControl(void) {
-    for (int i = 0; i < MOTOR_COUNT; i++) {
-        motor_states_[i].target_adc_ = 2048;
-        motor_states_[i].current_adc_ = 2048;
-        motor_states_[i].dir_ = kMotorDir_Stop;
-        motor_states_[i].duty_ = 0;
-        motor_states_[i].active_ = false;
-        motor_states_[i].timeout_ = 0;
-        Pid_Init(&motor_states_[i].pid_, PID_DEFAULT_KP, PID_DEFAULT_KI, PID_DEFAULT_KD);
-    }
-}
-
-/*********************************************************************
- * @fn      Motor_RunControlLoop
- *
- * @brief   主控制循环：读取 ADC 值 → 8路 PID → 更新 PWM
- *          在 DMA1 完成中断中执行
- *
- * @return  none
- */
-void Motor_RunControlLoop(void) {
-    if (!motor_adc_ready_)
-        return;
-
-    for (int i = 0; i < MOTOR_COUNT; i++) {
-        /* ADC 物理通道与电机序号反序 (PCB 布局) */
-        motor_states_[i].current_adc_ = motor_adc_dma_buf_[i];
-
-        /* 非活跃电机：跳过，PWM 保持 0 */
-        if (!motor_states_[i].active_)
-            continue;
-
-        /* 判断是否到达目标 */
-        int16_t diff = (int16_t)(motor_states_[i].target_adc_ - motor_states_[i].current_adc_);
-        int16_t abs_diff = (diff < 0) ? -diff : diff;
-        if (abs_diff <= CTRL_ERROR_THRESHOLD) {
-            motor_states_[i].active_ = false;
-            motor_states_[i].duty_ = 0;
-            Motor_SetPwm(i, kMotorDir_Stop, 0);
-            continue;
-        }
-
-        /* 超时判断 */
-        if (motor_states_[i].timeout_ > 0) {
-            motor_states_[i].timeout_--;
-        }
-        if (motor_states_[i].timeout_ == 0) {
-            motor_states_[i].active_ = false;
-            motor_states_[i].duty_ = 0;
-            Motor_SetPwm(i, kMotorDir_Stop, 0);
-            continue;
-        }
-
-        float output = Pid_Update(&motor_states_[i].pid_, (float)motor_states_[i].target_adc_,
-                                  (float)motor_states_[i].current_adc_);
-
-        if (output > 0) {
-            motor_states_[i].dir_ = kMotorDir_Forward;
-            uint16_t raw = (uint16_t)(output > 999.0f ? 999 : (uint16_t)output);
-            motor_states_[i].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
-        }
-        else if (output < 0) {
-            motor_states_[i].dir_ = kMotorDir_Reverse;
-            uint16_t raw = (uint16_t)(-output > 999.0f ? 999 : (uint16_t)(-output));
-            motor_states_[i].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
-        }
-        else {
-            motor_states_[i].dir_ = kMotorDir_Stop;
-            motor_states_[i].duty_ = 0;
-        }
-
-        Motor_SetPwm(i, motor_states_[i].dir_, motor_states_[i].duty_);
-    }
-}
-
-/*********************************************************************
- * @fn      Motor_SetTarget
- *
- * @brief   设置指定电机的目标位置
- *
- * @param   ch          电机序号
- * @param   target_adc  目标 ADC 值 (0~4095)
- *
- * @return  none
- */
-void Motor_SetTarget(uint8_t ch, uint16_t target_adc) {
-    if (ch < MOTOR_COUNT) {
-        motor_states_[ch].target_adc_ = target_adc;
-        motor_states_[ch].active_ = true;
-        motor_states_[ch].timeout_ = CTRL_TIMEOUT_MS;
-        Pid_Reset(&motor_states_[ch].pid_);
-    }
-}
-
-/*********************************************************************
- * @fn      Motor_StopAll
- *
- * @brief   停止所有电机运动
- *
- * @return  none
- */
-void Motor_StopAll(void) {
-    for (int i = 0; i < MOTOR_COUNT; i++) {
-        motor_states_[i].active_ = false;
-        motor_states_[i].timeout_ = 0;
-        Motor_SetPwm(i, kMotorDir_Stop, 0);
-    }
-}
-
-/*********************************************************************
- * @fn      Motor_SetPid
- *
- * @brief   设置指定电机的 PID 参数 (运行时更新)
- *
- * @param   ch  电机序号 (0~7), 0xFF=全部
- * @param   kp  比例增益
- * @param   ki  积分增益
- * @param   kd  微分增益
- *
- * @return  none
- */
-void Motor_SetPid(uint8_t ch, float kp, float ki, float kd) {
-    if (ch == 0xFF) {
-        for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
-            Pid_Init(&motor_states_[i].pid_, kp, ki, kd);
-        }
-    }
-    else if (ch < MOTOR_COUNT) {
-        Pid_Init(&motor_states_[ch].pid_, kp, ki, kd);
-    }
-}
-
-/*********************************************************************
- * @fn      Motor_IsAdcReady
- *
- * @brief   检查 ADC 数据是否就绪
- *
- * @return  true 就绪, false 忙
- */
-bool Motor_IsAdcReady(void) {
-    return motor_adc_ready_;
-}
-
-/*********************************************************************
- * @fn      Motor_GetStatus
- *
- * @brief   导出 8 路电机状态，供 HID1 上报使用
- *
- * @param   adc    输出当前 ADC 值
- * @param   target 输出目标 ADC 值
- * @param   duty   输出当前占空比
- *
- * @return  none
- */
-void Motor_GetStatus(uint16_t adc[8], uint16_t target[8], uint16_t duty[8], uint8_t* active_flags) {
-    uint8_t flags = 0;
-    for (int i = 0; i < MOTOR_COUNT; i++) {
-        adc[i] = motor_states_[i].current_adc_;
-        target[i] = motor_states_[i].target_adc_;
-        duty[i] = motor_states_[i].duty_;
-        if (motor_states_[i].active_)
-            flags |= (uint8_t)(1u << i);
-    }
-    if (active_flags)
-        *active_flags = flags;
 }

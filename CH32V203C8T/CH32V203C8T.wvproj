@@ -133,7 +133,8 @@
 							"${project}/Debug",
 							"${project}/Core",
 							"${project}/User",
-							"${project}/Peripheral/inc"
+							"${project}/Peripheral/inc",
+							"${project}/User/bsp"
 						],
 						"include_system_paths": [],
 						"include_files": []
@@ -313,7 +314,7 @@
 					"small_data_limit": 8,
 					"align": "default",
 					"save_restore": true,
-					"other_target_flags": ""
+					"other_target_flags": "-Wall -Wextra"
 				},
 				"component_toolchain": "${WCH:Toolchain:GCC15}",
 				"name": "obj"

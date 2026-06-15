@@ -67,13 +67,16 @@ set(SRC_FILES
 "${CMAKE_CURRENT_SOURCE_DIR}/User/usb/usb_desc.cpp"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/usb/usb_device.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/usb/usb_impl.c"
-"${CMAKE_CURRENT_SOURCE_DIR}/User/ch32v20x_it.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/bsp.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/ch32v20x_it.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/motor_hw.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/system_ch32v20x.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/tick.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/usbd.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/app/app.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/app/motor.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/app/pid.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/main.c"
-"${CMAKE_CURRENT_SOURCE_DIR}/User/motor.c"
-"${CMAKE_CURRENT_SOURCE_DIR}/User/pid.c"
-"${CMAKE_CURRENT_SOURCE_DIR}/User/system_ch32v20x.c"
-"${CMAKE_CURRENT_SOURCE_DIR}/User/tick.c"
-"${CMAKE_CURRENT_SOURCE_DIR}/User/usbd.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/Startup/startup_ch32v20x_D6.S"
 "${CMAKE_CURRENT_SOURCE_DIR}/Peripheral/src/ch32v20x_adc.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/Peripheral/src/ch32v20x_bkp.c"
@@ -98,13 +101,13 @@ set(SRC_FILES
 "${CMAKE_CURRENT_SOURCE_DIR}/Debug/debug.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/Core/core_riscv.c"
 )
-set(CMAKE_C_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -I\"${CMAKE_CURRENT_SOURCE_DIR}/Debug\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Core\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/User\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Peripheral/inc\" -std=gnu17")
-set(CMAKE_CXX_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -std=gnu++17 -fabi-version=0")
-set(CMAKE_ASM_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -x assembler-with-cpp")
+set(CMAKE_C_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Wall -Wextra -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -I\"${CMAKE_CURRENT_SOURCE_DIR}/Debug\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Core\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/User\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Peripheral/inc\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/User/bsp\" -std=gnu17")
+set(CMAKE_CXX_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Wall -Wextra -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -std=gnu++17 -fabi-version=0")
+set(CMAKE_ASM_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Wall -Wextra -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -x assembler-with-cpp")
 
 add_executable("${TARGET_ARTIFACT}" ${SRC_FILES})
 
-set_target_properties("${TARGET_ARTIFACT}" PROPERTIES LINK_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -T \"${CMAKE_CURRENT_SOURCE_DIR}/Ld/Link.ld\"   -nostartfiles -Xlinker --gc-sections -Wl,-Map,\"CH32V203C8T.map\" --specs=nano.specs --specs=nosys.specs")
+set_target_properties("${TARGET_ARTIFACT}" PROPERTIES LINK_FLAGS " -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Wall -Wextra -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -gdwarf-4 -T \"${CMAKE_CURRENT_SOURCE_DIR}/Ld/Link.ld\"   -nostartfiles -Xlinker --gc-sections -Wl,-Map,\"CH32V203C8T.map\" --specs=nano.specs --specs=nosys.specs")
 
 target_link_libraries("${TARGET_ARTIFACT}" )
 
