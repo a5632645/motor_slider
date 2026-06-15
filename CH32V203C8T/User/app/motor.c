@@ -25,7 +25,7 @@ void Motor_InitControl(void) {
         motor_states_[i].duty_ = 0;
         motor_states_[i].active_ = false;
         motor_states_[i].timeout_ = 0;
-        Pid_Init(&motor_states_[i].pid_, PID_DEFAULT_KP, PID_DEFAULT_KI, PID_DEFAULT_KD);
+        Pid_Init(&motor_states_[i].pid_, PID_DEFAULT_KP, PID_DEFAULT_KI, PWM_BIAS, PWM_MAX);
     }
 }
 
@@ -80,13 +80,11 @@ void Motor_RunControlLoop(void) {
 
         if (output > 0) {
             motor_states_[i].dir_ = kMotorDir_Forward;
-            uint16_t raw = (uint16_t)(output > 999.0f ? 999 : (uint16_t)output);
-            motor_states_[i].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
+            motor_states_[i].duty_ = (uint16_t)output + PWM_BIAS;
         }
         else if (output < 0) {
             motor_states_[i].dir_ = kMotorDir_Reverse;
-            uint16_t raw = (uint16_t)(-output > 999.0f ? 999 : (uint16_t)(-output));
-            motor_states_[i].duty_ = (raw < PWM_MIN_START_DUTY) ? (uint16_t)PWM_MIN_START_DUTY : raw;
+            motor_states_[i].duty_ = (uint16_t)(-output) + PWM_BIAS;
         }
         else {
             motor_states_[i].dir_ = kMotorDir_Stop;
@@ -118,13 +116,14 @@ void Motor_StopAll(void) {
 
 
 void Motor_SetPid(uint8_t ch, float kp, float ki, float kd) {
+    (void)kd; /* 保留以兼容 HID 协议，本实现为 PI 控制器 */
     if (ch == 0xFF) {
         for (uint8_t i = 0; i < kMotorIdx_Count; i++) {
-            Pid_Init(&motor_states_[i].pid_, kp, ki, kd);
+            Pid_Init(&motor_states_[i].pid_, kp, ki, PWM_BIAS, PWM_MAX);
         }
     }
     else if (ch < kMotorIdx_Count) {
-        Pid_Init(&motor_states_[ch].pid_, kp, ki, kd);
+        Pid_Init(&motor_states_[ch].pid_, kp, ki, PWM_BIAS, PWM_MAX);
     }
 }
 
