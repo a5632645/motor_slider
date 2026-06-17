@@ -16,6 +16,7 @@
 struct MotorState {
     uint16_t target_adc_;  /* 目标位置 (0~4095) */
     uint16_t current_adc_; /* 当前位置 (0~4095) */
+    uint32_t filtered_adc_q8_; /* 控制用滤波 ADC，Q8 */
     enum MotorDir dir_;    /* 当前方向 */
     uint16_t duty_;        /* 当前占空比 */
     struct PidCtx pid_;    /* PID 控制器 */

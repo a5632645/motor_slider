@@ -22,6 +22,33 @@ static void _Motor_ReinitPidLimits(void) {
     }
 }
 
+static uint16_t _Motor_FilterAdc(struct MotorState *state, uint16_t raw_adc) {
+    uint32_t raw_q8 = (uint32_t)raw_adc << 8;
+    uint32_t filtered_q8 = state->filtered_adc_q8_;
+
+    if (raw_q8 >= filtered_q8) {
+        uint32_t step = (raw_q8 - filtered_q8) >> CTRL_ADC_FILTER_SHIFT;
+        if (step == 0 && raw_q8 != filtered_q8) {
+            step = 1;
+        }
+        filtered_q8 += step;
+    }
+    else {
+        uint32_t step = (filtered_q8 - raw_q8) >> CTRL_ADC_FILTER_SHIFT;
+        if (step == 0) {
+            step = 1;
+        }
+        filtered_q8 -= step;
+    }
+
+    state->filtered_adc_q8_ = filtered_q8;
+    return (uint16_t)((filtered_q8 + 128) >> 8);
+}
+
+static int16_t _Motor_AbsI16(int16_t value) {
+    return (value < 0) ? -value : value;
+}
+
 // ------------------------------------------------------------
 // publci
 // ------------------------------------------------------------
@@ -30,6 +57,7 @@ void Motor_InitControl(void) {
     for (int i = 0; i < kMotorIdx_Count; i++) {
         motor_states_[i].target_adc_ = 2048;
         motor_states_[i].current_adc_ = 2048;
+        motor_states_[i].filtered_adc_q8_ = (uint32_t)2048 << 8;
         motor_states_[i].dir_ = kMotorDir_Stop;
         motor_states_[i].duty_ = 0;
         motor_states_[i].active_ = false;
@@ -56,7 +84,7 @@ void Motor_RunControlLoop(void) {
     Motor_OnAdcReady(raw_adc);
 
     for (int i = 0; i < kMotorIdx_Count; i++) {
-        motor_states_[i].current_adc_ = raw_adc[i];
+        motor_states_[i].current_adc_ = _Motor_FilterAdc(&motor_states_[i], raw_adc[i]);
 
         /* 非活跃电机：跳过，PWM 保持 0 */
         if (!motor_states_[i].active_)
@@ -64,9 +92,9 @@ void Motor_RunControlLoop(void) {
 
         /* 判断是否到达目标 */
         int16_t diff = (int16_t)(motor_states_[i].target_adc_ - motor_states_[i].current_adc_);
-        int16_t abs_diff = (diff < 0) ? -diff : diff;
+        int16_t abs_diff = _Motor_AbsI16(diff);
         int16_t adc_delta = (int16_t)(motor_states_[i].current_adc_ - motor_states_[i].last_adc_);
-        int16_t abs_adc_delta = (adc_delta < 0) ? -adc_delta : adc_delta;
+        int16_t abs_adc_delta = _Motor_AbsI16(adc_delta);
 
         if (abs_diff <= CTRL_ERROR_THRESHOLD && abs_adc_delta <= CTRL_STILL_THRESHOLD) {
             if (!motor_states_[i].settling_) {
@@ -100,11 +128,25 @@ void Motor_RunControlLoop(void) {
         float output = Pid_Update(&motor_states_[i].pid_, (float)motor_states_[i].target_adc_,
                                   (float)motor_states_[i].current_adc_);
 
-        if (output > 0) {
+        enum MotorDir next_dir = kMotorDir_Stop;
+        if (output >= CTRL_OUTPUT_DEADBAND) {
+            next_dir = kMotorDir_Forward;
+        }
+        else if (output <= -CTRL_OUTPUT_DEADBAND) {
+            next_dir = kMotorDir_Reverse;
+        }
+
+        if (next_dir != kMotorDir_Stop && motor_states_[i].dir_ != kMotorDir_Stop &&
+            next_dir != motor_states_[i].dir_ && abs_diff <= CTRL_REVERSE_THRESHOLD) {
+            next_dir = kMotorDir_Stop;
+            Pid_Reset(&motor_states_[i].pid_);
+        }
+
+        if (next_dir == kMotorDir_Forward) {
             motor_states_[i].dir_ = kMotorDir_Forward;
             motor_states_[i].duty_ = (uint16_t)output + pwm_bias_;
         }
-        else if (output < 0) {
+        else if (next_dir == kMotorDir_Reverse) {
             motor_states_[i].dir_ = kMotorDir_Reverse;
             motor_states_[i].duty_ = (uint16_t)(-output) + pwm_bias_;
         }
@@ -118,7 +160,20 @@ void Motor_RunControlLoop(void) {
 }
 
 void Motor_SetTarget(uint8_t ch, uint16_t target_adc) {
+    int16_t diff = (int16_t)(target_adc - motor_states_[ch].current_adc_);
+
     motor_states_[ch].target_adc_ = target_adc;
+    if (_Motor_AbsI16(diff) <= CTRL_TARGET_SNAP_THRESHOLD) {
+        motor_states_[ch].active_ = false;
+        motor_states_[ch].dir_ = kMotorDir_Stop;
+        motor_states_[ch].duty_ = 0;
+        motor_states_[ch].settling_ = false;
+        Pid_Reset(&motor_states_[ch].pid_);
+        MotorHw_SetPwm(ch, kMotorDir_Stop, 0);
+        Motor_OnActiveChanged(ch, false);
+        return;
+    }
+
     motor_states_[ch].active_ = true;
     motor_states_[ch].start_tick_ = Tick_Get();
     motor_states_[ch].last_adc_ = motor_states_[ch].current_adc_;

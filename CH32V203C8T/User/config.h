@@ -25,6 +25,27 @@
 /** @brief 电机控制周期 (us)，250us = 4kHz */
 #define CTRL_LOOP_US 250
 
+/** @brief 控制用 ADC 一阶 IIR 滤波强度，1=快，2=较稳，3=更稳但延迟更大 */
+#define CTRL_ADC_FILTER_SHIFT 2
+
+/** @brief 目标变化小于等于该阈值时直接吸附，不启动电机 */
+#define CTRL_TARGET_SNAP_THRESHOLD 3
+
+/** @brief PID 输出绝对值小于该阈值时视为 0，不叠加 PWM_BIAS */
+#define CTRL_OUTPUT_DEADBAND 2.0f
+
+/** @brief 目标附近小于等于该阈值时禁止反向驱动，避免来回敲击 */
+#define CTRL_REVERSE_THRESHOLD 6
+
+/** @brief MIDI RX 后 ADC 离开目标中心超过该阈值才恢复发送 CC */
+#define MIDI_RX_HOLD_RELEASE_ADC 96
+
+/** @brief MIDI 专用 ADC 平均采样次数 */
+#define MIDI_ADC_AVG_COUNT 8
+
+/** @brief MIDI CC 候选值连续出现该次数后才发送 */
+#define MIDI_CC_CONFIRM_COUNT 3
+
 /* ===================================================================
  * PID 默认参数
  * =================================================================== */

@@ -60,11 +60,17 @@ static void _MotorControl(void) {
 
 static uint16_t midi_raw_adc_[kMotorIdx_Count];
 static bool midi_raw_adc_ready_;
+static uint32_t midi_adc_sum_[kMotorIdx_Count];
+static uint8_t midi_adc_avg_count_;
 static bool midi_filter_ready_;
 static uint32_t midi_filtered_adc_q8_[kMotorIdx_Count];
 static uint8_t midi_last_sent_cc_[kMotorIdx_Count];
+static uint8_t midi_candidate_cc_[kMotorIdx_Count];
+static uint8_t midi_candidate_count_[kMotorIdx_Count];
 static uint8_t midi_pending_cc_[kMotorIdx_Count];
 static uint8_t midi_pending_mask_;
+static uint16_t midi_rx_hold_adc_[kMotorIdx_Count];
+static uint8_t midi_rx_hold_mask_;
 static uint8_t midi_send_idx_;
 static uint8_t midi_packet_[4];
 
@@ -152,6 +158,26 @@ static bool _MidiSelectPendingChannel(void) {
     return false;
 }
 
+static bool _MidiRxHoldReleased(uint8_t idx, uint16_t filtered_adc) {
+    uint16_t hold_adc = midi_rx_hold_adc_[idx];
+    uint16_t delta = (filtered_adc > hold_adc) ? (filtered_adc - hold_adc) : (hold_adc - filtered_adc);
+    return delta >= MIDI_RX_HOLD_RELEASE_ADC;
+}
+
+static bool _MidiConfirmCc(uint8_t idx, uint8_t cc_value) {
+    if (midi_candidate_cc_[idx] != cc_value) {
+        midi_candidate_cc_[idx] = cc_value;
+        midi_candidate_count_[idx] = 1;
+        return MIDI_CC_CONFIRM_COUNT <= 1;
+    }
+
+    if (midi_candidate_count_[idx] < MIDI_CC_CONFIRM_COUNT) {
+        midi_candidate_count_[idx]++;
+    }
+
+    return midi_candidate_count_[idx] >= MIDI_CC_CONFIRM_COUNT;
+}
+
 static void _MidiControl(void) {
     switch (midi_state_) {
         case kMidiState_WaitAdc: {
@@ -165,7 +191,16 @@ static void _MidiControl(void) {
             for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
                 uint16_t filtered_adc = _MidiFilterAdc(i, midi_raw_adc_[i]);
                 uint8_t cc_value = _MidiAdcToCc(filtered_adc);
-                if (!Motor_IsMoving(i) && _MidiShouldUpdateCc(midi_last_sent_cc_[i], cc_value, filtered_adc)) {
+
+                if (midi_rx_hold_mask_ & (1 << i)) {
+                    if (!_MidiRxHoldReleased(i, filtered_adc)) {
+                        continue;
+                    }
+                    midi_rx_hold_mask_ &= ~(1 << i);
+                }
+
+                if (!Motor_IsMoving(i) && _MidiShouldUpdateCc(midi_last_sent_cc_[i], cc_value, filtered_adc) &&
+                    _MidiConfirmCc(i, cc_value)) {
                     midi_pending_cc_[i] = cc_value;
                     midi_pending_mask_ |= (1 << i);
                 }
@@ -212,26 +247,42 @@ void App_OnMidiCcRx(uint8_t idx, uint8_t cc_value, uint16_t target_adc) {
         return;
     }
 
-    if (cc_value == midi_last_sent_cc_[idx]) {
-        return;
-    }
-
-    if ((midi_pending_mask_ & (1 << idx)) && cc_value == midi_pending_cc_[idx]) {
-        return;
-    }
+    bool is_same_sent = (cc_value == midi_last_sent_cc_[idx]);
+    bool is_same_pending = ((midi_pending_mask_ & (1 << idx)) && cc_value == midi_pending_cc_[idx]);
 
     midi_pending_mask_ &= ~(1 << idx);
+    midi_rx_hold_adc_[idx] = target_adc;
+    midi_rx_hold_mask_ |= (1 << idx);
     midi_last_sent_cc_[idx] = cc_value;
+    midi_candidate_cc_[idx] = cc_value;
+    midi_candidate_count_[idx] = 0;
+
+    if (is_same_sent || is_same_pending) {
+        return;
+    }
     Motor_SetTarget(idx, target_adc);
 }
 
 void Motor_OnAdcReady(uint16_t raw_adc[kMotorIdx_Count]) {
-    if (!midi_raw_adc_ready_) {
-        for (int i = 0; i < kMotorIdx_Count; ++i) {
-            midi_raw_adc_[i] = raw_adc[i];
-        }
-        midi_raw_adc_ready_ = true;
+    if (midi_raw_adc_ready_) {
+        return;
     }
+
+    for (int i = 0; i < kMotorIdx_Count; ++i) {
+        midi_adc_sum_[i] += raw_adc[i];
+    }
+
+    midi_adc_avg_count_++;
+    if (midi_adc_avg_count_ < MIDI_ADC_AVG_COUNT) {
+        return;
+    }
+
+    for (int i = 0; i < kMotorIdx_Count; ++i) {
+        midi_raw_adc_[i] = (uint16_t)(midi_adc_sum_[i] / MIDI_ADC_AVG_COUNT);
+        midi_adc_sum_[i] = 0;
+    }
+    midi_adc_avg_count_ = 0;
+    midi_raw_adc_ready_ = true;
 }
 
 // ------------------------------------------------------------
@@ -244,8 +295,14 @@ void App_Init(void) {
     midi_filter_ready_ = false;
     for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
         midi_last_sent_cc_[i] = 0xFF;
+        midi_candidate_cc_[i] = 0xFF;
+        midi_candidate_count_[i] = 0;
+        midi_rx_hold_adc_[i] = 0;
+        midi_adc_sum_[i] = 0;
         midi_filtered_adc_q8_[i] = 0;
     }
+    midi_adc_avg_count_ = 0;
+    midi_rx_hold_mask_ = 0;
 }
 
 void App_Loop(void) {
