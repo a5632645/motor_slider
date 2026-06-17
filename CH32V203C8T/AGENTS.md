@@ -9,6 +9,8 @@ cmake -B build -G "Ninja Multi-Config"
 cmake --build build
 ```
 
+> cmake --build build 可编译所有源文件（.c/.cpp → .o），但最终链接阶段会报错 `'CH32V203C8T.elf': No such file` — 这是正常的，因为当前环境缺少 MounRiver 工具链的完整链接器支持。编译 .o 文件成功即表示代码语法正确。
+
 ## 项目结构
 
 ```
@@ -40,7 +42,7 @@ cmake --build build
 │   ├── usb/                 # USB 协议栈
 │   │   ├── usb_desc.cpp/h   # USB 描述符 (tpusb 模板生成)
 │   │   ├── usb_device.c/h   # USB 设备状态机 + EP0
-│   │   ├── usb_impl.c/h     # HID0 printf + HID1 电机控制
+│   │   ├── usb_impl.c/h     # USB 设备回调 + HID0/HID1/MIDI 实现
 │   │   ├── usb_hardware.h   # USBFS 寄存器别名
 │   │   ├── usb_endpoint.h   # 端点抽象 + 端点类型枚举
 │   │   ├── usb_setup_request.h  # Setup 请求解析
@@ -63,43 +65,31 @@ cmake --build build
 
 ```
 main.c
-  └─ Bsp_Init()          ── 初始化 HAL、时钟、USB 设备
-  └─ App_Init()          ── 初始化应用模块 (电机、PID、MIDI)
-  └─ App_Loop()          ── 永不返回的主循环
-       ├─ MidiCC_ProcessRx()  ── USB MIDI CC 接收
-       ├─ _MotorControl()     ── 控制状态机 (Idle→AdcStart→AdcWait→Control)
+  └─ Bsp_Init()                ── 初始化 HAL、时钟、USB 设备
+  └─ App_Init()                ── 初始化应用模块 (电机、PID、MIDI)
+  └─ App_Loop()                ── 永不返回的主循环
+       ├─ _MotorControl()       ── 控制状态机 (Idle→AdcStart→AdcWait→Control)
        │    ├─ Motor_StartAdcConversion()  ── bsp/motor_hw.c
        │    ├─ Motor_RunControlLoop()      ── app/motor.c (PID + PWM)
-       │    └─ Motor_SendStatus()          ── USB HID1 上报
-       └─ Motor_ProcessCommand()  ── USB HID1 命令接收
+       │    └─ Motor_OnAdcReady()          ── 回调 → MidiCC_UpdateAdc
+       ├─ Motor_SendStatus()   ── USB HID1 上报 8 路 ADC/目标/占空比
+       ├─ Motor_ProcessCommand()  ── USB HID1 命令接收 (目标/PID/Bias/Max)
+       ├─ MidiCC_Control()     ── MIDI 发送状态机 (滤波/量化/CC 发送)
+       ├─ MidiCC_ProcessRx()   ── USB MIDI CC 接收 → ADC 目标映射
+       ├─ UsbImpl_Midi_Poll()  ── MIDI TX FIFO → EP4 Bulk 发送
+       └─ UsbImpl_HidDebug_Flush()  ── HID0 printf FIFO → EP1 发送
 ```
 
 ## 编码约定
 
-### 命名规则
 - **全局变量** 以 `_` 结尾（如 `motor_adc_dma_buf_`, `tick_`）
 - **源文件 `static` 函数** 以 `_` 开头（如 `_HidInHandler`, `_MotorControl`）
 - **头文件函数声明** `模块_动作`（如 `Motor_InitPwm`, `HID_Write`, `Bsp_Init`）
 - **枚举值** 前缀 `k` + 模块名（如 `kUsbEndpoint_HidIn`, `kMotorDir_Forward`, `kCtrlState_Idle`）
 - **禁止 `extern` 全局变量** — 用头文件声明的函数访问
 - **禁止对结构体/枚举使用typedef** — 显式 `struct 结构体` / `enum 枚举名`
-- **中断函数** `__attribute__((interrupt("WCH-Interrupt-fast")))`
+- **中断函数** 需要标记`__attribute__((interrupt("WCH-Interrupt-fast")))`
 - **注释/todo** 不能自主删除，todo 用 `#warning todo`
-- **头文件** 必须使用 Doxygen 注释
-- **注释** 使用 `//`
-
-### 头文件规范
-- **`.h` 文件开头** `#pragma once`（简洁优先，不强制 `#ifndef` 传统守卫）
-- **Doxygen 注释** 只写在 `.h` 文件中，`.c` 文件不重复写
-
-## 相关文档
-
-- [硬件设计需求](docs/iwant/project_promt.md)
-- [MIDI CC 需求](docs/iwant/midi_cc.md)
-- [电机控制实现计划](docs/superpowers/plans/2025-06-12-motor-control.md)
-- [控制状态机设计](docs/superpowers/plans/2025-06-12-control-state-machine.md)
-- [USB MIDI CC 实现计划](docs/superpowers/plans/2025-06-16-usb-midi-cc.md)
-- [闭环控制+HID1协议](docs/superpowers/specs/2025-06-12-closed-loop-control.md)
-- [电位器UI重构](docs/superpowers/specs/2025-06-12-potentiometer-ui-rework.md)
-- [USB MIDI CC 设计](docs/superpowers/specs/2025-06-15-usb-midi-cc.md)
-- [WCH CH32V203 数据手册](http://www.wch.cn/products/CH32V203.html)
+- **头文件** 尽量`使用Doxygen注释函数声明`和`#pragma once`
+- **源文件** 逻辑复杂的私有函数尽量使用Doxygen注释
+- **普通注释** 使用 `//`

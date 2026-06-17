@@ -1,6 +1,8 @@
 #ifndef __APP_APP_H__
 #define __APP_APP_H__
 
+#include <stdint.h>
+
 /**
  * @brief 初始化应用层模块
  */

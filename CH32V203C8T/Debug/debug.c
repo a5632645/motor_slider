@@ -44,7 +44,7 @@ void Delay_Us(uint32_t n)
 __attribute__((used))
 int _write(int fd, char *buf, int size)
 {
-    if (!HID_IsConnected())
+    if (!UsbImpl_HidDebug_IsConnected())
     {
         return size;
     }
@@ -54,10 +54,10 @@ int _write(int fd, char *buf, int size)
 
     while (remaining > 0)
     {
-        int written = (int)HID_Write(p, (uint32_t)remaining);
+        int written = (int)UsbImpl_HidDebug_Write(p, (uint32_t)remaining);
         p += written;
         remaining -= written;
-        HID_Flush();
+        UsbImpl_HidDebug_Flush();
     }
     return size;
 }

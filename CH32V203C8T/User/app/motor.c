@@ -226,7 +226,7 @@ void Motor_SetPwmMax(uint16_t pwm_max) {
 }
 
 void Motor_SendStatus(void) {
-    if (!HID1_IsTxReady())
+    if (!UsbImpl_HidMotor_IsTxReady())
         return;
 
     uint8_t flags = 0;
@@ -255,12 +255,12 @@ void Motor_SendStatus(void) {
         buf[HID1_DUTY(i) + 1] = (uint8_t)((duty[i] >> 8) & 0xFF);
     }
 
-    HID1_Write(buf);
+    UsbImpl_HidMotor_Write(buf);
 }
 
 void Motor_ProcessCommand(void) {
     uint8_t buf[kHidReportSize];
-    if (!HID1_Read(buf))
+    if (!UsbImpl_HidMotor_Read(buf))
         return;
 
     switch (buf[0]) {

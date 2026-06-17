@@ -94,24 +94,24 @@ enum {
  * @param len  数据长度
  * @return 实际写入的字节数
  */
-uint32_t HID_Write(const uint8_t* data, uint32_t len);
+uint32_t UsbImpl_HidDebug_Write(const uint8_t* data, uint32_t len);
 
 /**
  * @brief 检查 HID0 缓冲区是否可写入
  * @return true 可写入
  */
-bool HID_CanWrite(void);
+bool UsbImpl_HidDebug_CanWrite(void);
 
 /**
  * @brief 刷新 HID0 FIFO 数据到 USB
  */
-void HID_Flush(void);
+void UsbImpl_HidDebug_Flush(void);
 
 /**
  * @brief 检查 USB 是否已连接
  * @return true 已连接
  */
-bool HID_IsConnected(void);
+bool UsbImpl_HidDebug_IsConnected(void);
 
 // ----- hid motor -----
 
@@ -120,66 +120,66 @@ bool HID_IsConnected(void);
  * @param bytes 输出缓冲区 (kHidReportSize 字节)
  * @return true 有新的 OUT 报告
  */
-bool HID1_Read(uint8_t bytes[kHidReportSize]);
+bool UsbImpl_HidMotor_Read(uint8_t bytes[kHidReportSize]);
 
 /**
  * @brief 检查 HID1 IN 端点是否空闲可发送
  * @return true 可发送
  */
-bool HID1_IsTxReady(void);
+bool UsbImpl_HidMotor_IsTxReady(void);
 
 /**
  * @brief 发送 HID1 IN 报告
  * @param bytes 待发送的 64 字节报告
  */
-void HID1_Write(uint8_t bytes[kHidReportSize]);
+void UsbImpl_HidMotor_Write(uint8_t bytes[kHidReportSize]);
 
 // ----- midi -----
 
 /**
  * @brief 轮询 MIDI USB 收发状态机
  */
-void Midi_Poll(void);
+void UsbImpl_Midi_Poll(void);
 
 /**
  * @brief 写入一个 4 字节 USB-MIDI Event Packet
  * @param pack 4 字节 MIDI 事件包
  * @return true 写入成功
  */
-bool Midi_Push(uint8_t pack[4]);
+bool UsbImpl_Midi_Push(uint8_t pack[4]);
 
 /**
  * @brief 获取待处理的 MIDI OUT 数据
  * @param len 输出数据长度
  * @return 数据缓冲区指针，无数据时返回 NULL
  */
-uint8_t const* Midi_GetRxBuffer(uint32_t* len);
+uint8_t const* UsbImpl_Midi_GetRxBuffer(uint32_t* len);
 
 /**
  * @brief 标记 MIDI OUT 数据已处理，并重新打开 OUT 端点
  */
-void Midi_SetRxReady(void);
+void UsbImpl_Midi_SetRxReady(void);
 
 /**
  * @brief 获取 MIDI IN 完成计数
  * @return 完成次数
  */
-uint32_t Midi_GetTxDoneCount(void);
+uint32_t UsbImpl_Midi_GetTxDoneCount(void);
 
 /**
  * @brief 获取 MIDI IN 超时恢复计数
  * @return 超时次数
  */
-uint32_t Midi_GetTxTimeoutCount(void);
+uint32_t UsbImpl_Midi_GetTxTimeoutCount(void);
 
 /**
  * @brief 获取 MIDI OUT 接收计数
  * @return 接收次数
  */
-uint32_t Midi_GetRxDoneCount(void);
+uint32_t UsbImpl_Midi_GetRxDoneCount(void);
 
 /**
  * @brief 获取 MIDI OUT 溢出计数
  * @return 溢出次数
  */
-uint32_t Midi_GetRxOverflowCount(void);
+uint32_t UsbImpl_Midi_GetRxOverflowCount(void);

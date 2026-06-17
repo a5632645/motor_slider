@@ -114,7 +114,7 @@ void UsbImpl_InitAndOpenEndpoints() {
     USBFSD->UEP1_TX_CTRL = USBFS_UEP_T_RES_NAK;
 
     /* EP2: HID1 IN (TX) — 初始 NAK, HID1_SendStatus 武装 */
-    /* EP3: HID1 OUT (RX) — 初始 ACK, 消费后由 HID1_Read 重新武装 */
+    /* EP3: HID1 OUT (RX) — 初始 ACK, 消费后由 UsbImpl_HidMotor_Read 重新武装 */
     USBFSD->UEP2_3_MOD = USBFS_UEP2_TX_EN | USBFS_UEP3_RX_EN;
     USBFSD->UEP2_DMA = (uint32_t)hid1_report_buf_;
     USBFSD->UEP2_TX_LEN = 0;
@@ -284,20 +284,20 @@ void UsbImpl_ClearStallEndpoint(uint8_t address) {
 // hid debug public
 // ------------------------------------------------------------
 
-bool HID_IsConnected(void) {
+bool UsbImpl_HidDebug_IsConnected(void) {
     return usb_device.using_configuration != 0;
 }
 
-uint32_t HID_Write(const uint8_t* data, uint32_t len) {
+uint32_t UsbImpl_HidDebug_Write(const uint8_t* data, uint32_t len) {
     return Kfifo_TryPush(&hid_fifo_.fifo, data, len);
 }
 
-bool HID_CanWrite(void) {
+bool UsbImpl_HidDebug_CanWrite(void) {
     return Kfifo_FreeSpace(&hid_fifo_.fifo) >= 64;
 }
 
-void HID_Flush(void) {
-    if (!HID_IsConnected()) {
+void UsbImpl_HidDebug_Flush(void) {
+    if (!UsbImpl_HidDebug_IsConnected()) {
         hid_fifo_.fifo.rpos = 0;
         hid_fifo_.fifo.wpos = 0;
         return;
@@ -343,7 +343,7 @@ void HID_Flush(void) {
 // hid motor public
 // ------------------------------------------------------------
 
-bool HID1_Read(uint8_t bytes[kHidReportSize]) {
+bool UsbImpl_HidMotor_Read(uint8_t bytes[kHidReportSize]) {
     if (!hid1_rx_pending_) {
         return false;
     }
@@ -354,11 +354,11 @@ bool HID1_Read(uint8_t bytes[kHidReportSize]) {
     return true;
 }
 
-bool HID1_IsTxReady(void) {
+bool UsbImpl_HidMotor_IsTxReady(void) {
     return !hid1_tx_busy_;
 }
 
-void HID1_Write(uint8_t bytes[kHidReportSize]) {
+void UsbImpl_HidMotor_Write(uint8_t bytes[kHidReportSize]) {
     memcpy(hid1_report_buf_, bytes, kHidReportSize);
     hid1_tx_busy_ = true;
     USBFSD->UEP2_TX_LEN = kHid1EpMpsize;
@@ -428,8 +428,8 @@ static void _Midi_TryArmTx(void) {
     USBFSD->UEP4_TX_CTRL = (USBFSD->UEP4_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
 }
 
-void Midi_Poll(void) {
-    if (!HID_IsConnected()) {
+void UsbImpl_Midi_Poll(void) {
+    if (!UsbImpl_HidDebug_IsConnected()) {
         _Midi_ResetTxTransfer();
         return;
     }
@@ -440,14 +440,14 @@ void Midi_Poll(void) {
     }
 }
 
-bool Midi_Push(uint8_t pack[4]) {
+bool UsbImpl_Midi_Push(uint8_t pack[4]) {
     if (Kfifo_FreeSpace(&midi_.fifo) < 4) {
         return false;
     }
     return Kfifo_TryPush(&midi_.fifo, pack, 4) == 4;
 }
 
-uint8_t const* Midi_GetRxBuffer(uint32_t* len) {
+uint8_t const* UsbImpl_Midi_GetRxBuffer(uint32_t* len) {
     if (!midi_.rx_pending) {
         *len = 0;
         return NULL;
@@ -457,24 +457,24 @@ uint8_t const* Midi_GetRxBuffer(uint32_t* len) {
     return midi_.rx_buf;
 }
 
-void Midi_SetRxReady(void) {
+void UsbImpl_Midi_SetRxReady(void) {
     midi_.rx_len = 0;
     midi_.rx_pending = false;
     USBFSD->UEP5_RX_CTRL = (USBFSD->UEP5_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_ACK;
 }
 
-uint32_t Midi_GetTxDoneCount(void) {
+uint32_t UsbImpl_Midi_GetTxDoneCount(void) {
     return midi_.tx_done_count;
 }
 
-uint32_t Midi_GetTxTimeoutCount(void) {
+uint32_t UsbImpl_Midi_GetTxTimeoutCount(void) {
     return midi_.tx_timeout_count;
 }
 
-uint32_t Midi_GetRxDoneCount(void) {
+uint32_t UsbImpl_Midi_GetRxDoneCount(void) {
     return midi_.rx_done_count;
 }
 
-uint32_t Midi_GetRxOverflowCount(void) {
+uint32_t UsbImpl_Midi_GetRxOverflowCount(void) {
     return midi_.rx_overflow_count;
 }
