@@ -314,5 +314,7 @@ void App_Loop(void) {
         _MidiControl();
         MidiCC_ProcessRx();
         Midi_Poll();
+
+        HID_Flush();
     }
 }

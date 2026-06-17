@@ -6,7 +6,6 @@
 #include "usb/usb_device.h"
 #include "usb/usb_hardware.h"
 
-
 void Usbd_Init() {
     RCC_ClocksTypeDef clocks;
     RCC_GetClocksFreq(&clocks);

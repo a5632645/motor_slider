@@ -57,6 +57,7 @@ int _write(int fd, char *buf, int size)
         int written = (int)HID_Write(p, (uint32_t)remaining);
         p += written;
         remaining -= written;
+        HID_Flush();
     }
     return size;
 }

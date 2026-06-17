@@ -52,5 +52,4 @@ void HardFault_Handler(void) {
 void SysTick_Handler(void) {
     SysTick->SR = 0;
     Tick_Increment();
-    HID_Flush();
 }

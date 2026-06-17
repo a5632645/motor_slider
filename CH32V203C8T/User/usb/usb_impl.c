@@ -220,57 +220,24 @@ void UsbImpl_GetDescriptor(struct UsbDevice* device, bool* allow) {
     }
 }
 
-static void _HidInHandler(void) {
-    hid_tx_busy = false;
-
-    /* Try to send next packet if data available */
-    uint32_t available = Kfifo_Size(&hid_fifo_.fifo);
-    if (available > 0) {
-        uint32_t to_read = (available > 63) ? 63 : available;
-        uint32_t total = 0;
-
-        /* Read from kfifo (may wrap around ring buffer) */
-        while (total < to_read) {
-            uint32_t chunk;
-            uint8_t* src = Kfifo_ContinueReadBegin(&hid_fifo_.fifo, &chunk);
-            uint32_t need = to_read - total;
-            if (chunk > need)
-                chunk = need;
-            if (chunk == 0)
-                break;
-            memcpy(hid_report_buf + 1 + total, src, chunk);
-            Kfifo_ContinueReadEnd(&hid_fifo_.fifo, chunk);
-            total += chunk;
-        }
-
-        hid_report_buf[0] = (uint8_t)total;
-        hid_tx_busy = true;
-
-        USBFSD->UEP1_TX_LEN = kHidReportSize;
-        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
-    }
-    else {
-        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
-    }
-}
-
 void UsbImpl_EpInComplete(uint8_t ep_num) {
     switch (ep_num) {
         case kHidEpAddr_In & 0xf:
             USBFSD->UEP1_TX_CTRL ^= USBFS_UEP_T_TOG;
-            _HidInHandler();
+            USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
+            hid_tx_busy = false;
             break;
         case kHid1EpAddr_In & 0xf:
-            hid1_tx_busy_ = false;
             USBFSD->UEP2_TX_CTRL ^= USBFS_UEP_T_TOG;
             USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
+            hid1_tx_busy_ = false;
             break;
         case kMidiEpAddr_In & 0xf:
+            USBFSD->UEP4_TX_CTRL ^= USBFS_UEP_T_TOG;
+            USBFSD->UEP4_TX_CTRL = (USBFSD->UEP4_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
             midi_.tx_busy = false;
             midi_.tx_armed = false;
             midi_.tx_done_count++;
-            USBFSD->UEP4_TX_CTRL ^= USBFS_UEP_T_TOG;
-            USBFSD->UEP4_TX_CTRL = (USBFSD->UEP4_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
             break;
         default:
             break;
@@ -330,8 +297,45 @@ bool HID_CanWrite(void) {
 }
 
 void HID_Flush(void) {
-    if (!hid_tx_busy && Kfifo_Size(&hid_fifo_.fifo) > 0) {
-        _HidInHandler();
+    if (!HID_IsConnected()) {
+        hid_fifo_.fifo.rpos = 0;
+        hid_fifo_.fifo.wpos = 0;
+        return;
+    }
+
+    if (hid_tx_busy)
+        return;
+
+    hid_tx_busy = false;
+
+    // Try to send next packet if data available
+    uint32_t available = Kfifo_Size(&hid_fifo_.fifo);
+    if (available > 0) {
+        uint32_t to_read = (available > 63) ? 63 : available;
+        uint32_t total = 0;
+
+        // Read from kfifo (may wrap around ring buffer)
+        while (total < to_read) {
+            uint32_t chunk;
+            uint8_t* src = Kfifo_ContinueReadBegin(&hid_fifo_.fifo, &chunk);
+            uint32_t need = to_read - total;
+            if (chunk > need)
+                chunk = need;
+            if (chunk == 0)
+                break;
+            memcpy(hid_report_buf + 1 + total, src, chunk);
+            Kfifo_ContinueReadEnd(&hid_fifo_.fifo, chunk);
+            total += chunk;
+        }
+
+        hid_report_buf[0] = (uint8_t)total;
+        hid_tx_busy = true;
+
+        USBFSD->UEP1_TX_LEN = kHidReportSize;
+        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
+    }
+    else {
+        USBFSD->UEP1_TX_CTRL = (USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
     }
 }
 
