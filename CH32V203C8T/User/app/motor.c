@@ -22,7 +22,7 @@ static void _Motor_ReinitPidLimits(void) {
     }
 }
 
-static uint16_t _Motor_FilterAdc(struct MotorState *state, uint16_t raw_adc) {
+static uint16_t _Motor_FilterAdc(struct MotorState* state, uint16_t raw_adc) {
     uint32_t raw_q8 = (uint32_t)raw_adc << 8;
     uint32_t filtered_q8 = state->filtered_adc_q8_;
 
@@ -86,11 +86,11 @@ void Motor_RunControlLoop(void) {
     for (int i = 0; i < kMotorIdx_Count; i++) {
         motor_states_[i].current_adc_ = _Motor_FilterAdc(&motor_states_[i], raw_adc[i]);
 
-        /* 非活跃电机：跳过，PWM 保持 0 */
+        // 非活跃电机：跳过，PWM 保持 0
         if (!motor_states_[i].active_)
             continue;
 
-        /* 判断是否到达目标 */
+        // 判断是否到达目标
         int16_t diff = (int16_t)(motor_states_[i].target_adc_ - motor_states_[i].current_adc_);
         int16_t abs_diff = _Motor_AbsI16(diff);
         int16_t adc_delta = (int16_t)(motor_states_[i].current_adc_ - motor_states_[i].last_adc_);
@@ -107,8 +107,7 @@ void Motor_RunControlLoop(void) {
         }
         motor_states_[i].last_adc_ = motor_states_[i].current_adc_;
 
-        if (motor_states_[i].settling_ &&
-            (uint32_t)(now_tick - motor_states_[i].settle_tick_) >= CTRL_SETTLE_MS) {
+        if (motor_states_[i].settling_ && (uint32_t)(now_tick - motor_states_[i].settle_tick_) >= CTRL_SETTLE_MS) {
             motor_states_[i].active_ = false;
             Motor_OnActiveChanged(i, false);
             motor_states_[i].duty_ = 0;
@@ -116,7 +115,7 @@ void Motor_RunControlLoop(void) {
             continue;
         }
 
-        /* 超时判断 */
+        // 超时判断
         if ((uint32_t)(now_tick - motor_states_[i].start_tick_) >= CTRL_TIMEOUT_MS) {
             motor_states_[i].active_ = false;
             Motor_OnActiveChanged(i, false);
@@ -136,8 +135,8 @@ void Motor_RunControlLoop(void) {
             next_dir = kMotorDir_Reverse;
         }
 
-        if (next_dir != kMotorDir_Stop && motor_states_[i].dir_ != kMotorDir_Stop &&
-            next_dir != motor_states_[i].dir_ && abs_diff <= CTRL_REVERSE_THRESHOLD) {
+        if (next_dir != kMotorDir_Stop && motor_states_[i].dir_ != kMotorDir_Stop && next_dir != motor_states_[i].dir_
+            && abs_diff <= CTRL_REVERSE_THRESHOLD) {
             next_dir = kMotorDir_Stop;
             Pid_Reset(&motor_states_[i].pid_);
         }
