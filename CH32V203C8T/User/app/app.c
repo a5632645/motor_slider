@@ -21,13 +21,13 @@ enum CtrlState {
 };
 
 static enum CtrlState ctrl_state_ = kCtrlState_Idle;
-static uint64_t last_ctrl_us_ = 0;
+static uint32_t last_ctrl_us_ = 0;
 
 static void _MotorControl(void) {
     switch (ctrl_state_) {
         case kCtrlState_Idle: {
-            uint64_t now_us = Tick_GetUs();
-            if ((uint64_t)(now_us - last_ctrl_us_) >= CTRL_LOOP_US) {
+            uint32_t now_us = Tick_GetUs();
+            if ((uint32_t)(now_us - last_ctrl_us_) >= CTRL_LOOP_US) {
                 last_ctrl_us_ = now_us;
                 ctrl_state_ = kCtrlState_AdcStart;
             }

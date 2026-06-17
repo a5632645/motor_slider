@@ -50,6 +50,6 @@ void HardFault_Handler(void) {
  * @return  none
  */
 void SysTick_Handler(void) {
+    Tick_OnSysTick();
     SysTick->SR = 0;
-    Tick_Increment();
 }
