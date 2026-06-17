@@ -50,7 +50,7 @@
 					"${project}/EXAM"
 				],
 				"optimization": {
-					"level": "none",
+					"level": "more",
 					"message_length": true,
 					"char_is_signed": true,
 					"function_sections": true,
