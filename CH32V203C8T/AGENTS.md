@@ -57,6 +57,7 @@ cmake --build build
 - **中断函数** `__attribute__((interrupt("WCH-Interrupt-fast")))`
 - **注释/todo** 不能自主删除，todo 用 `#warning todo`
 - **头文件** 必须使用 Doxygen 注释
+- **注释** 使用`//`
 
 ## 相关文档
 

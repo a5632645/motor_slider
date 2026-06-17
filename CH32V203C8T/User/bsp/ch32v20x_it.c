@@ -13,11 +13,9 @@
 #include "tick.h"
 #include "usb/usb_impl.h"
 
-
 void NMI_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void SysTick_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-void DMA1_Channel1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 /*********************************************************************
  * @fn      NMI_Handler
@@ -47,8 +45,7 @@ void HardFault_Handler(void) {
 /*********************************************************************
  * @fn      SysTick_Handler
  *
- * @brief   1ms tick interrupt. Increments tick counter and flushes
- *          buffered HID data to USB.
+ * @brief   1ms tick interrupt. Increments tick counter.
  *
  * @return  none
  */

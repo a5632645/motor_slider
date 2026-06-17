@@ -5,7 +5,6 @@
 #include "ch32v20x_gpio.h"
 #include "ch32v20x_rcc.h"
 #include "ch32v20x_tim.h"
-#include "ch32v20x_misc.h"
 
 // ------------------------------------------------------------
 // variable
@@ -188,8 +187,6 @@ void _InitAdc(void) {
     dma.DMA_M2M = DMA_M2M_Disable;
     DMA_Init(DMA1_Channel1, &dma);
 
-    DMA_ITConfig(DMA1_Channel1, DMA_IT_TC, ENABLE);
-
     /* === ADC1 配置 === */
     ADC_DeInit(ADC1);
     RCC_ADCCLKConfig(RCC_PCLK2_Div8); /* ADC 时钟 = 12MHz */
@@ -213,16 +210,6 @@ void _InitAdc(void) {
 
     ADC_DMACmd(ADC1, ENABLE);
 
-    /* DMA NVIC 中断配置 */
-    {
-        NVIC_InitTypeDef nvic;
-        nvic.NVIC_IRQChannel = DMA1_Channel1_IRQn;
-        nvic.NVIC_IRQChannelCmd = ENABLE;
-        nvic.NVIC_IRQChannelPreemptionPriority = 1;
-        nvic.NVIC_IRQChannelSubPriority = 0;
-        NVIC_Init(&nvic);
-    }
-
     motor_adc_ready_ = true;
 
     ADC_Cmd(ADC1, ENABLE);
@@ -232,18 +219,6 @@ void _InitAdc(void) {
     ADC_StartCalibration(ADC1);
     while (ADC_GetCalibrationStatus(ADC1))
         ;
-}
-
-// ------------------------------------------------------------
-// irq
-// ------------------------------------------------------------
-
-__attribute__((interrupt("WCH-Interrupt-fast")))
-void DMA1_Channel1_IRQHandler(void) {
-    if (DMA_GetITStatus(DMA1_IT_TC1)) {
-        DMA_ClearITPendingBit(DMA1_IT_TC1);
-        motor_adc_ready_ = true;
-    }
 }
 
 // ------------------------------------------------------------
@@ -262,12 +237,18 @@ void MotorHw_StartAdcConversion(void) {
 
     motor_adc_ready_ = false;
     DMA_Cmd(DMA1_Channel1, DISABLE);
+    DMA_ClearFlag(DMA1_FLAG_TC1);
     DMA1_Channel1->CNTR = kMotorIdx_Count;
     DMA_Cmd(DMA1_Channel1, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 }
 
 bool MotorHw_IsAdcReady(void) {
+    if (!motor_adc_ready_ && DMA_GetFlagStatus(DMA1_FLAG_TC1) != RESET) {
+        DMA_ClearFlag(DMA1_FLAG_TC1);
+        motor_adc_ready_ = true;
+    }
+
     return motor_adc_ready_;
 }
 

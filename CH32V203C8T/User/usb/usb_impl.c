@@ -5,9 +5,12 @@
 #include <string.h>
 
 #include "config.h"
+#include "tick.h"
 #include "usb_desc.h"
 #include "usb_hardware.h"
 #include "util/kfifo.h"
+
+#define MIDI_TX_TIMEOUT_MS 100
 
 // ------------------------------------------------------------
 // varibale
@@ -35,6 +38,26 @@ static volatile uint32_t hid1_rx_len_;
 static volatile bool hid1_rx_pending_;
 static bool hid1_tx_busy_;
 
+struct MidiUsbState {
+    struct Kfifo fifo;
+    uint8_t buf[MIDI_TX_FIFO_SIZE];
+    __attribute__((aligned(4))) uint8_t tx_buf[kMidiEpMpsize];
+    __attribute__((aligned(4))) uint8_t rx_buf[kMidiEpMpsize];
+    volatile bool tx_busy;
+    volatile bool tx_armed;
+    volatile bool rx_pending;
+    volatile uint8_t rx_len;
+    uint32_t tx_start_tick;
+    uint32_t tx_done_count;
+    uint32_t tx_timeout_count;
+    uint32_t rx_done_count;
+    uint32_t rx_overflow_count;
+};
+
+static struct MidiUsbState midi_ = {
+    .fifo.mask = MIDI_TX_FIFO_SIZE - 1,
+};
+
 // ------------------------------------------------------------
 // private
 // ------------------------------------------------------------
@@ -50,6 +73,20 @@ void _HID_Init(void) {
     hid_fifo_.fifo.rpos = 0;
     hid_tx_busy = false;
     hid_idle = 0;
+}
+
+void _Midi_Init(void) {
+    midi_.fifo.wpos = 0;
+    midi_.fifo.rpos = 0;
+    midi_.tx_busy = false;
+    midi_.tx_armed = false;
+    midi_.rx_pending = false;
+    midi_.rx_len = 0;
+    midi_.tx_start_tick = 0;
+    midi_.tx_done_count = 0;
+    midi_.tx_timeout_count = 0;
+    midi_.rx_done_count = 0;
+    midi_.rx_overflow_count = 0;
 }
 
 /*
@@ -87,6 +124,18 @@ void UsbImpl_InitAndOpenEndpoints() {
 
     _HID1_Init();
     _HID_Init();
+    _Midi_Init();
+
+    /* EP4: MIDI Bulk IN (TX) */
+    USBFSD->UEP4_1_MOD |= USBFS_UEP4_TX_EN;
+    USBFSD->UEP4_DMA = (uint32_t)midi_.tx_buf;
+    USBFSD->UEP4_TX_LEN = 0;
+    USBFSD->UEP4_TX_CTRL = USBFS_UEP_T_RES_NAK;
+
+    /* EP5: MIDI Bulk OUT (RX) */
+    USBFSD->UEP5_6_MOD |= USBFS_UEP5_RX_EN;
+    USBFSD->UEP5_DMA = (uint32_t)midi_.rx_buf;
+    USBFSD->UEP5_RX_CTRL = USBFS_UEP_R_RES_ACK;
 }
 
 void UsbImpl_HandleClassRequest(struct UsbDevice* device, bool* allow, bool setup_phase) {
@@ -131,12 +180,12 @@ void UsbImpl_HandleVendorRequest(struct UsbDevice* device, bool* allow, bool set
 void UsbImpl_HandleSof(void) {}
 
 void UsbImpl_SetInterfaceAlter(uint8_t interface, uint8_t alter, bool* allow) {
-    *allow = (interface == 0);
+    *allow = (interface < kUsbInterface_Count);
     (void)alter;
 }
 
 uint8_t UsbImpl_GetInterfaceAlter(uint8_t interface, bool* allow) {
-    *allow = (interface == 0);
+    *allow = (interface < kUsbInterface_Count);
     return 0;
 }
 
@@ -216,6 +265,13 @@ void UsbImpl_EpInComplete(uint8_t ep_num) {
             USBFSD->UEP2_TX_CTRL ^= USBFS_UEP_T_TOG;
             USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
             break;
+        case kMidiEpAddr_In & 0xf:
+            midi_.tx_busy = false;
+            midi_.tx_armed = false;
+            midi_.tx_done_count++;
+            USBFSD->UEP4_TX_CTRL ^= USBFS_UEP_T_TOG;
+            USBFSD->UEP4_TX_CTRL = (USBFSD->UEP4_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
+            break;
         default:
             break;
     }
@@ -227,6 +283,24 @@ void UsbImpl_EpOutComplete(uint8_t ep_num, uint16_t count) {
             hid1_rx_len_ = (count < kHid1EpMpsize) ? count : kHid1EpMpsize;
             hid1_rx_pending_ = true;
             USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_NAK;
+            break;
+        case kMidiEpAddr_Out & 0xf:
+            if (midi_.rx_pending) {
+                midi_.rx_overflow_count++;
+                USBFSD->UEP5_RX_CTRL = (USBFSD->UEP5_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_NAK;
+                break;
+            }
+            if (count > kMidiEpMpsize) {
+                count = kMidiEpMpsize;
+            }
+            if (count == 0) {
+                USBFSD->UEP5_RX_CTRL = (USBFSD->UEP5_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_ACK;
+                break;
+            }
+            midi_.rx_len = (uint8_t)count;
+            midi_.rx_pending = true;
+            midi_.rx_done_count++;
+            USBFSD->UEP5_RX_CTRL = (USBFSD->UEP5_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_NAK;
             break;
     }
 }
@@ -287,90 +361,116 @@ void HID1_Write(uint8_t bytes[kHidReportSize]) {
     USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
 }
 
-// bool HID1_Read(uint8_t* buf, uint32_t* len) {
-//     if (!hid1_rx_pending_)
-//         return false;
-//     uint32_t cpy = hid1_rx_len_ < kHid1EpMpsize ? hid1_rx_len_ : kHid1EpMpsize;
-//     memcpy(buf, hid1_rx_buf_, cpy);
-//     if (len)
-//         *len = cpy;
-//     hid1_rx_pending_ = false;
-//     /* 重新武装 EP3 RX — 阻挡解除, 接收下一帧 */
-//     USBFSD->UEP3_RX_CTRL = (USBFSD->UEP3_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_ACK;
-//     return true;
-// }
+// ------------------------------------------------------------
+// midi
+// ------------------------------------------------------------
 
-// void HID1_ProcessCommand(void) {
-//     uint8_t buf[kHid1EpMpsize];
-//     uint32_t len;
-//     if (!HID1_Read(buf, &len))
-//         return;
-//     if (len == 0)
-//         return;
+static void _Midi_ResetTxTransfer(void) {
+    midi_.tx_busy = false;
+    midi_.tx_armed = false;
+    USBFSD->UEP4_TX_LEN = 0;
+    USBFSD->UEP4_TX_CTRL = (USBFSD->UEP4_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
+}
 
-//     switch (buf[0]) {
-//         case 0x01: /* 设置目标位置 — 可变数量电机 */
-//         {
-//             uint8_t count = buf[1];
-//             if (count > 8)
-//                 count = 8;
-//             uint32_t need = (uint32_t)2 + (uint32_t)count * 3;
-//             if (len >= need && count > 0) {
-//                 printf("[HID1] 设置目标:");
-//                 for (uint8_t j = 0; j < count; j++) {
-//                     uint8_t idx = buf[2 + j * 3];
-//                     uint16_t pos = (uint16_t)buf[3 + j * 3] | (uint16_t)(buf[4 + j * 3] << 8);
-//                     if (idx < MOTOR_COUNT) {
-//                         Motor_SetTarget(idx, pos);
-//                         printf(" CH%d=%d", idx + 1, pos);
-//                     }
-//                 }
-//                 printf("\r\n");
-//             }
-//         } break;
-//         case 0x03: /* 停止所有电机 */
-//             Motor_StopAll();
-//             printf("[HID1] 停止所有电机\r\n");
-//             break;
-//         case 0x04: /* 设置 PID 参数 */
-//             if (len >= 9) {
-//                 uint8_t ch = buf[1];
-//                 float kp = (float)((uint16_t)buf[2] | (uint16_t)(buf[3] << 8)) / 1000.0f;
-//                 float ki = (float)((uint16_t)buf[4] | (uint16_t)(buf[5] << 8)) / 10000.0f;
-//                 float kd = (float)((uint16_t)buf[6] | (uint16_t)(buf[7] << 8)) / 1000.0f;
-//                 Motor_SetPid(ch, kp, ki, kd);
-//                 if (ch == 0xFF) {
-//                     printf("[HID1] PID全局: Kp=%.3f Ki=%.4f Kd=%.3f\r\n", kp, ki, kd);
-//                 }
-//                 else {
-//                     printf("[HID1] PID CH%d: Kp=%.3f Ki=%.4f Kd=%.3f\r\n", ch + 1, kp, ki, kd);
-//                 }
-//             }
-//             break;
-//         default:
-//             break;
-//     }
-// }
+static void _Midi_RecoverTxTimeout(void) {
+    if (!midi_.tx_busy) {
+        return;
+    }
 
-// void HID1_SendStatus(const uint16_t adc[8], const uint16_t target[8], const uint16_t duty[8], uint8_t active_flags) {
-//     uint8_t* buf = hid1_report_buf_;
+    if ((uint32_t)(Tick_Get() - midi_.tx_start_tick) < MIDI_TX_TIMEOUT_MS) {
+        return;
+    }
 
-//     buf[HID1_STATUS_FLAGS] = 0x01; /* running */
-//     buf[HID1_ACTIVE_FLAGS] = active_flags;
+    midi_.tx_timeout_count++;
+    _Midi_ResetTxTransfer();
+}
 
-//     for (int i = 0; i < 8; i++) {
-//         buf[HID1_ADC(i)] = (uint8_t)(adc[i] & 0xFF);
-//         buf[HID1_ADC(i) + 1] = (uint8_t)((adc[i] >> 8) & 0xFF);
-//         buf[HID1_TARGET(i)] = (uint8_t)(target[i] & 0xFF);
-//         buf[HID1_TARGET(i) + 1] = (uint8_t)((target[i] >> 8) & 0xFF);
-//         buf[HID1_DUTY(i)] = (uint8_t)(duty[i] & 0xFF);
-//         buf[HID1_DUTY(i) + 1] = (uint8_t)((duty[i] >> 8) & 0xFF);
-//     }
+static uint32_t _Midi_ReadTxFifo(uint8_t* dst, uint32_t len) {
+    uint32_t total = 0;
+    while (total < len) {
+        uint32_t chunk;
+        uint8_t* src = Kfifo_ContinueReadBegin(&midi_.fifo, &chunk);
+        uint32_t need = len - total;
+        if (chunk > need) {
+            chunk = need;
+        }
+        if (chunk == 0) {
+            break;
+        }
+        memcpy(dst + total, src, chunk);
+        Kfifo_ContinueReadEnd(&midi_.fifo, chunk);
+        total += chunk;
+    }
+    return total;
+}
 
-//     /* 武装 EP2 IN — 同 HID0 模式：设 TX_LEN → 设 ACK */
-//     if (!hid1_tx_busy_) {
-//         hid1_tx_busy_ = true;
-//         USBFSD->UEP2_TX_LEN = kHid1EpMpsize;
-//         USBFSD->UEP2_TX_CTRL = (USBFSD->UEP2_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
-//     }
-// }
+static void _Midi_TryArmTx(void) {
+    uint32_t available = Kfifo_Size(&midi_.fifo);
+    uint32_t to_read = (available > kMidiEpMpsize) ? kMidiEpMpsize : available;
+    to_read = (to_read / 4) * 4;
+    if (to_read == 0) {
+        return;
+    }
+
+    uint32_t total = _Midi_ReadTxFifo(midi_.tx_buf, to_read);
+    if (total == 0) {
+        return;
+    }
+
+    midi_.tx_busy = true;
+    midi_.tx_armed = true;
+    midi_.tx_start_tick = Tick_Get();
+    USBFSD->UEP4_TX_LEN = total;
+    USBFSD->UEP4_TX_CTRL = (USBFSD->UEP4_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_ACK;
+}
+
+void Midi_Poll(void) {
+    if (!HID_IsConnected()) {
+        _Midi_ResetTxTransfer();
+        return;
+    }
+
+    _Midi_RecoverTxTimeout();
+    if (!midi_.tx_busy) {
+        _Midi_TryArmTx();
+    }
+}
+
+bool Midi_Push(uint8_t pack[4]) {
+    if (Kfifo_FreeSpace(&midi_.fifo) < 4) {
+        return false;
+    }
+    return Kfifo_TryPush(&midi_.fifo, pack, 4) == 4;
+}
+
+uint8_t const* Midi_GetRxBuffer(uint32_t* len) {
+    if (!midi_.rx_pending) {
+        *len = 0;
+        return NULL;
+    }
+
+    *len = midi_.rx_len;
+    return midi_.rx_buf;
+}
+
+void Midi_SetRxReady(void) {
+    midi_.rx_len = 0;
+    midi_.rx_pending = false;
+    USBFSD->UEP5_RX_CTRL = (USBFSD->UEP5_RX_CTRL & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_ACK;
+}
+
+uint32_t Midi_GetTxDoneCount(void) {
+    return midi_.tx_done_count;
+}
+
+uint32_t Midi_GetTxTimeoutCount(void) {
+    return midi_.tx_timeout_count;
+}
+
+uint32_t Midi_GetRxDoneCount(void) {
+    return midi_.rx_done_count;
+}
+
+uint32_t Midi_GetRxOverflowCount(void) {
+    return midi_.rx_overflow_count;
+}

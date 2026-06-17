@@ -3,6 +3,8 @@
 #include "tpusb/device.hpp"
 #include "tpusb/usb.hpp"
 #include "tpusb/hid.hpp"
+#include "tpusb/uac2.hpp"
+#include "tpusb/midiv1.hpp"
 
 /*
  * Device Descriptor:
@@ -12,14 +14,14 @@
  */
 static constexpr auto kDevice =
 tpusb::Device{
-    0x0110,     // bcdUSB = 1.10
+    0x0200,     // bcdUSB = 2.00
     0x00,       // bDeviceClass (per interface)
     0x00,       // bDeviceSubClass
     0x00,       // bDeviceProtocol
     64,         // bMaxPacketSize0
     0x1A86,     // idVendor (WCH)
     0x0002,     // idProduct
-    0x0001,     // bcdDevice
+    0x0005,     // bcdDevice
     1,          // iManufacturer
     2,          // iProduct
     3,          // iSerialNumber
@@ -69,9 +71,16 @@ static constexpr uint8_t kMotorReportDesc[] = {
     0xC0,                   /* End Collection */
 };
 
+enum {
+    kMidiJack_UsbIn = 1,
+    kMidiJack_ExtIn,
+    kMidiJack_UsbOut,
+    kMidiJack_ExtOut
+};
+
 /*
  * Configuration Descriptor:
- *   Config + HID0(printf) + HID1(motor control)
+ *   Config + HID0(printf) + HID1(motor control) + AudioControl + MIDIStreaming
  *   wTotalLength and bNumInterfaces are auto-calculated by tpusb.
  */
 static constexpr auto kConfig =
@@ -84,7 +93,7 @@ tpusb::Config{
     },
     tpusb::hid::HID_Interface{
         tpusb::InterfaceInitPackClassed{
-            .interface_no = 0,
+            .interface_no = kUsbInterface_HidDebug,
             .alter = 0,
             .protocol = 0,
             .str_id = 0
@@ -111,7 +120,7 @@ tpusb::Config{
     },
     tpusb::hid::HID_Interface{
         tpusb::InterfaceInitPackClassed{
-            .interface_no = 1,
+            .interface_no = kUsbInterface_HidMotor,
             .alter = 0,
             .protocol = 0,
             .str_id = 0
@@ -141,6 +150,32 @@ tpusb::Config{
                 .max_pack_size = kHid1EpMpsize,
                 .interval = 4
             }
+        }
+    },
+    tpusb::midiv1::AudioControlInterface<1>{
+        tpusb::midiv1::AudioControlInitPack{
+            .interface_no = kUsbInterface_AudioControl,
+            .str_id = 0,
+            .bcd_adc = 0x0100
+        },
+        std::array<uint8_t, 1>{kUsbInterface_MidiStreaming}
+    },
+    tpusb::midiv1::MIDIStreamInterface{
+        tpusb::InterfaceInitPackClassed{
+            .interface_no = kUsbInterface_MidiStreaming,
+            .alter = 0,
+            .protocol = 0,
+            .str_id = 0
+        },
+        tpusb::midiv1::ExternalMidiInJack{kMidiJack_UsbOut, kMidiJack_ExtIn},
+        tpusb::midiv1::ExternalMidiOutJack{kMidiJack_UsbIn, kMidiJack_ExtOut},
+        tpusb::midiv1::MidiEndpoint<1>{
+            tpusb::BulkInitPack{kMidiEpAddr_In, kMidiEpMpsize, 0},
+            tpusb::midiv1::EndpointJackAssociation<1>{kMidiJack_UsbOut}
+        },
+        tpusb::midiv1::MidiEndpoint<1>{
+            tpusb::BulkInitPack{kMidiEpAddr_Out, kMidiEpMpsize, 0},
+            tpusb::midiv1::EndpointJackAssociation<1>{kMidiJack_UsbIn}
         }
     }
 };

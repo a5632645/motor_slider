@@ -65,6 +65,18 @@ enum {
     kHid1EpAddr_In = 0x82,
     kHid1EpAddr_Out = 0x03,
     kHid1EpMpsize = 64,
+
+    kMidiEpAddr_In = 0x84,
+    kMidiEpAddr_Out = 0x05,
+    kMidiEpMpsize = 64,
+};
+
+enum {
+    kUsbInterface_HidDebug = 0,
+    kUsbInterface_HidMotor,
+    kUsbInterface_AudioControl,
+    kUsbInterface_MidiStreaming,
+    kUsbInterface_Count
 };
 
 /* HID1 64 字节状态报告格式偏移 */
@@ -121,3 +133,53 @@ bool HID1_IsTxReady(void);
  * @param bytes 待发送的 64 字节报告
  */
 void HID1_Write(uint8_t bytes[kHidReportSize]);
+
+// ----- midi -----
+
+/**
+ * @brief 轮询 MIDI USB 收发状态机
+ */
+void Midi_Poll(void);
+
+/**
+ * @brief 写入一个 4 字节 USB-MIDI Event Packet
+ * @param pack 4 字节 MIDI 事件包
+ * @return true 写入成功
+ */
+bool Midi_Push(uint8_t pack[4]);
+
+/**
+ * @brief 获取待处理的 MIDI OUT 数据
+ * @param len 输出数据长度
+ * @return 数据缓冲区指针，无数据时返回 NULL
+ */
+uint8_t const* Midi_GetRxBuffer(uint32_t* len);
+
+/**
+ * @brief 标记 MIDI OUT 数据已处理，并重新打开 OUT 端点
+ */
+void Midi_SetRxReady(void);
+
+/**
+ * @brief 获取 MIDI IN 完成计数
+ * @return 完成次数
+ */
+uint32_t Midi_GetTxDoneCount(void);
+
+/**
+ * @brief 获取 MIDI IN 超时恢复计数
+ * @return 超时次数
+ */
+uint32_t Midi_GetTxTimeoutCount(void);
+
+/**
+ * @brief 获取 MIDI OUT 接收计数
+ * @return 接收次数
+ */
+uint32_t Midi_GetRxDoneCount(void);
+
+/**
+ * @brief 获取 MIDI OUT 溢出计数
+ * @return 溢出次数
+ */
+uint32_t Midi_GetRxOverflowCount(void);

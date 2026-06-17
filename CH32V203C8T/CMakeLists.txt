@@ -74,6 +74,7 @@ set(SRC_FILES
 "${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/tick.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/usbd.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/app/app.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/User/app/midi_cc.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/app/motor.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/app/pid.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/User/main.c"

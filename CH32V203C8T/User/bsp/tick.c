@@ -31,6 +31,43 @@ uint32_t Tick_Get(void) {
 }
 
 /*********************************************************************
+ * @fn      Tick_GetUs
+ *
+ * @brief   Returns the current time in microseconds.
+ *
+ * @return  time in microseconds
+ */
+uint64_t Tick_GetUs(void) {
+    uint32_t tick_before;
+    uint32_t tick_after;
+    uint32_t sr;
+    uint64_t cnt;
+    uint64_t cmp;
+
+    do {
+        tick_before = tick_;
+        cnt = SysTick->CNT;
+        cmp = SysTick->CMP;
+        sr = SysTick->SR;
+        tick_after = tick_;
+    } while (tick_before != tick_after);
+
+    if (cmp == 0) {
+        return (uint64_t)tick_before * 1000u;
+    }
+
+    if (sr & 1u) {
+        tick_before++;
+    }
+
+    if (cnt >= cmp) {
+        cnt = cmp - 1;
+    }
+
+    return ((uint64_t)tick_before * 1000u) + ((cnt * 1000u) / cmp);
+}
+
+/*********************************************************************
  * @fn      Tick_Increment
  *
  * @brief   Called from SysTick_Handler once per 1ms.

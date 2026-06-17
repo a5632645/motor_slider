@@ -47,4 +47,4 @@ SpaceInEmptyBlock: false
 SpacesInContainerLiterals: false
 Standard: Auto
 TabWidth: 2
-MaxEmptyLinesToKeep : 2
+MaxEmptyLinesToKeep : 1

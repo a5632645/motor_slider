@@ -14,6 +14,12 @@ void Tick_Init(void);
 uint32_t Tick_Get(void);
 
 /**
+ * @brief 获取当前系统时间（微秒）
+ * @return 从 Init 起经过的微秒数
+ */
+uint64_t Tick_GetUs(void);
+
+/**
  * @brief 滴答计数器递增，由 SysTick_Handler 周期调用
  */
 void Tick_Increment(void);

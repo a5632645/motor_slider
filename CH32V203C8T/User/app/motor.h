@@ -20,7 +20,10 @@ struct MotorState {
     uint16_t duty_;        /* 当前占空比 */
     struct PidCtx pid_;    /* PID 控制器 */
     bool active_;          /* true=正在闭环寻找目标 */
-    uint16_t timeout_;     /* 超时计数，递减到0停止 */
+    uint32_t start_tick_;  /* 本次运动开始时间 (ms) */
+    uint32_t settle_tick_; /* 进入稳定区间的起始时间 (ms) */
+    uint16_t last_adc_;    /* 上一控制周期 ADC 值 */
+    bool settling_;        /* true=正在累计稳定时间 */
 };
 
 // ------------------------------------------------------------
@@ -65,6 +68,18 @@ void Motor_StopAll(void);
 void Motor_SetPid(uint8_t ch, float kp, float ki, float kd);
 
 /**
+ * @brief 设置 PWM 起步偏置
+ * @param pwm_bias 起步偏置，占空比范围 0~当前 PWM 最大值
+ */
+void Motor_SetPwmBias(uint16_t pwm_bias);
+
+/**
+ * @brief 设置 PWM 最大占空比
+ * @param pwm_max PWM 最大占空比
+ */
+void Motor_SetPwmMax(uint16_t pwm_max);
+
+/**
  * @brief 检查 ADC 数据是否就绪
  * @return true 就绪, false 忙
  */
@@ -79,3 +94,13 @@ void Motor_SendStatus(void);
  * @brief 处理 HID1 OUT 命令
  */
 void Motor_ProcessCommand(void);
+
+bool Motor_IsMoving(uint8_t ch);
+
+// ------------------------------------------------------------
+// dependency
+// ------------------------------------------------------------
+
+extern void Motor_OnActiveChanged(uint8_t ch, bool active);
+
+extern void Motor_OnAdcReady(uint16_t raw_adc[kMotorIdx_Count]);

@@ -33,7 +33,7 @@ try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QStatusBar, QPlainTextEdit, QPushButton, QSplitter,
-        QSlider, QSizePolicy, QComboBox, QDoubleSpinBox,
+        QSlider, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox,
     )
     from PyQt6.QtGui import (
         QColor, QPalette, QFont, QPainter, QPen,
@@ -163,6 +163,34 @@ class HidWorker(QThread):
         report[6] = (ki_int >> 8) & 0xFF
         report[7] = kd_int & 0xFF
         report[8] = (kd_int >> 8) & 0xFF
+        with QMutexLocker(self._mutex):
+            if self._device is not None:
+                try:
+                    self._device.write(bytes(report))
+                except Exception:
+                    pass
+
+    def send_pwm_bias(self, value: int):
+        """通过 HID1 OUT 设置 PWM 起步偏置"""
+        report = bytearray(65)
+        report[0] = 0x00   # 幻影 Report ID
+        report[1] = 0x05   # 命令 ID: 设置 PWM Bias
+        report[2] = value & 0xFF
+        report[3] = (value >> 8) & 0xFF
+        with QMutexLocker(self._mutex):
+            if self._device is not None:
+                try:
+                    self._device.write(bytes(report))
+                except Exception:
+                    pass
+
+    def send_pwm_max(self, value: int):
+        """通过 HID1 OUT 设置 PWM 最大占空比"""
+        report = bytearray(65)
+        report[0] = 0x00   # 幻影 Report ID
+        report[1] = 0x06   # 命令 ID: 设置 PWM Max
+        report[2] = value & 0xFF
+        report[3] = (value >> 8) & 0xFF
         with QMutexLocker(self._mutex):
             if self._device is not None:
                 try:
@@ -574,6 +602,40 @@ class MainWindow(QMainWindow):
         self._pid_btn.setFixedWidth(50)
         pid_layout.addWidget(self._pid_btn)
 
+        # --- 分隔线 ---
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #555; padding: 0 4px;")
+        pid_layout.addWidget(sep)
+
+        # PWM Bias 控件
+        pid_layout.addWidget(QLabel("PWM Bias:"))
+        self._pwm_bias_spin = QSpinBox()
+        self._pwm_bias_spin.setRange(0, 4095)
+        self._pwm_bias_spin.setValue(0)
+        self._pwm_bias_spin.setFixedWidth(80)
+        pid_layout.addWidget(self._pwm_bias_spin)
+
+        self._pwm_bias_btn = QPushButton("发送")
+        self._pwm_bias_btn.setFixedWidth(50)
+        pid_layout.addWidget(self._pwm_bias_btn)
+
+        # --- 分隔线 ---
+        sep2 = QLabel("|")
+        sep2.setStyleSheet("color: #555; padding: 0 4px;")
+        pid_layout.addWidget(sep2)
+
+        # PWM Max 控件
+        pid_layout.addWidget(QLabel("PWM Max:"))
+        self._pwm_max_spin = QSpinBox()
+        self._pwm_max_spin.setRange(800, 999)
+        self._pwm_max_spin.setValue(999)
+        self._pwm_max_spin.setFixedWidth(80)
+        pid_layout.addWidget(self._pwm_max_spin)
+
+        self._pwm_max_btn = QPushButton("发送")
+        self._pwm_max_btn.setFixedWidth(50)
+        pid_layout.addWidget(self._pwm_max_btn)
+
         pid_layout.addStretch()
         splitter.addWidget(pid_container)
 
@@ -643,6 +705,10 @@ class MainWindow(QMainWindow):
             pot.target_changed.connect(self._on_pot_target_changed)
         # PID 发送按钮
         self._pid_btn.clicked.connect(self._on_pid_send)
+        # PWM Bias 发送按钮
+        self._pwm_bias_btn.clicked.connect(self._on_pwm_bias_send)
+        # PWM Max 发送按钮
+        self._pwm_max_btn.clicked.connect(self._on_pwm_max_send)
 
     def _on_hid1_connected(self):
         self._conn_hid1_label.setText("HID1:●")
@@ -704,6 +770,18 @@ class MainWindow(QMainWindow):
         ki = self._pid_ki.value()
         kd = self._pid_kd.value()
         self._worker.send_pid(ch, kp, ki, kd)
+
+    def _on_pwm_bias_send(self):
+        """PWM Bias 发送按钮 -> HID1 OUT"""
+        value = self._pwm_bias_spin.value()
+        self._worker.send_pwm_bias(value)
+        self._console.appendPlainText(f"[HID1] PWM Bias -> {value}")
+
+    def _on_pwm_max_send(self):
+        """PWM Max 发送按钮 -> HID1 OUT"""
+        value = self._pwm_max_spin.value()
+        self._worker.send_pwm_max(value)
+        self._console.appendPlainText(f"[HID1] PWM Max -> {value}")
 
     def _on_data(self, report: StatusReport):
         self._latest_report = report
