@@ -10,13 +10,193 @@
 // variable
 // ------------------------------------------------------------
 
+#define MOTOR5_PDM_STEPS 1000
+
+#define MOTOR5_IN1_SET   ((uint32_t)GPIO_Pin_14)
+#define MOTOR5_IN2_SET   ((uint32_t)GPIO_Pin_15)
+#define MOTOR5_IN1_RESET ((uint32_t)GPIO_Pin_14 << 16)
+#define MOTOR5_IN2_RESET ((uint32_t)GPIO_Pin_15 << 16)
+#define MOTOR5_BOTH_LOW  (MOTOR5_IN1_RESET | MOTOR5_IN2_RESET)
+// 电机 5 使用 TIM1_UP 以 96kHz 触发 DMA 刷 GPIOB->BSHR。
+// 1000 点循环表对应 96Hz 的完整重复周期，表内用误差累加把脉冲均匀打散。
+#define MOTOR5_PDM_DUTY_DEADBAND 2
+
 __attribute__((aligned(4)))
 static volatile uint16_t motor_adc_dma_buf_[kMotorIdx_Count];
 static volatile bool motor_adc_ready_;
 
+__attribute__((aligned(4)))
+static uint32_t motor5_pdm_dma_buf_[MOTOR5_PDM_STEPS];
+static enum MotorDir motor5_pdm_dir_ = kMotorDir_Stop;
+static uint16_t motor5_pdm_duty_ = 0xFFFF;
+// true 表示 DMA1_Channel5 正在响应 TIM1 update request。
+// 运行中 duty 变化只重填 buffer，不重启 DMA，避免相位反复归零。
+static bool motor5_pdm_running_;
+
 // ------------------------------------------------------------
 // private
 // ------------------------------------------------------------
+
+/**
+ * @brief   根据电机方向生成 GPIOB->BSHR 写入值
+ * @param   dir 电机方向
+ * @return  BSHR 32 位值 (SET 低半字, RESET 高半字)
+ */
+static uint32_t _Motor5BuildPdmOnValue(enum MotorDir dir) {
+    switch (dir) {
+        case kMotorDir_Forward:
+            return MOTOR5_IN2_SET | MOTOR5_IN1_RESET;
+
+        case kMotorDir_Reverse:
+            return MOTOR5_IN1_SET | MOTOR5_IN2_RESET;
+
+        case kMotorDir_Brake:
+            return MOTOR5_IN1_SET | MOTOR5_IN2_SET;
+
+        case kMotorDir_Stop:
+        default:
+            return MOTOR5_BOTH_LOW;
+    }
+}
+
+/**
+ * @brief   用 Bresenham/PDM 算法填充 DMA 缓冲区
+ *          将 duty/MOTOR5_PDM_STEPS 占空比均匀分散到 1000 点循环表中，
+ *          避免前 N 点全高造成 96Hz 低频 PWM 分量。
+ * @param   dir  电机方向 (Stop/0 duty 时直接返回)
+ * @param   duty 占空比 0~999
+ */
+static void _Motor5FillPdmBuffer(enum MotorDir dir, uint16_t duty) {
+    uint32_t acc = 0;
+    uint32_t on_value = _Motor5BuildPdmOnValue(dir);
+
+    if (dir == kMotorDir_Stop || duty == 0) {
+        return;
+    }
+
+    for (uint16_t i = 0; i < MOTOR5_PDM_STEPS; ++i) {
+        // Bresenham/PDM 风格分散脉冲，避免前 N 点全高造成 96Hz 低频 PWM。
+        acc += duty;
+        if (acc >= MOTOR5_PDM_STEPS) {
+            acc -= MOTOR5_PDM_STEPS;
+            motor5_pdm_dma_buf_[i] = on_value;
+        }
+        else {
+            motor5_pdm_dma_buf_[i] = MOTOR5_BOTH_LOW;
+        }
+    }
+}
+
+/**
+ * @brief   启动电机 5 PDM DMA 传输
+ *          利用 TIM1 update 事件触发 DMA1_Channel5 向 GPIOB->BSHR 刷数据，
+ *          不干扰 TIM1 已有的硬件 PWM 输出。
+ */
+static void _Motor5StartPdm(void) {
+    if (motor5_pdm_running_) {
+        return;
+    }
+
+    // TIM1 本身继续负责已有硬件 PWM；这里只启用 update DMA request。
+    DMA_Cmd(DMA1_Channel5, DISABLE);
+    DMA1_Channel5->MADDR = (uint32_t)motor5_pdm_dma_buf_;
+    DMA_ClearFlag(DMA1_FLAG_GL5);
+    DMA1_Channel5->CNTR = MOTOR5_PDM_STEPS;
+    DMA_Cmd(DMA1_Channel5, ENABLE);
+    TIM_DMACmd(TIM1, TIM_DMA_Update, ENABLE);
+    motor5_pdm_running_ = true;
+}
+
+/**
+ * @brief   停止电机 5 PDM DMA 传输
+ *          直接关 DMA 和 update request，比持续刷全低表更省总线。
+ */
+static void _Motor5StopPdm(void) {
+    if (!motor5_pdm_running_) {
+        GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
+        return;
+    }
+
+    // 停机时直接关 DMA 和 update request，比持续刷全低表更省总线。
+    TIM_DMACmd(TIM1, TIM_DMA_Update, DISABLE);
+    DMA_Cmd(DMA1_Channel5, DISABLE);
+    GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
+    motor5_pdm_running_ = false;
+}
+
+/**
+ * @brief   判断是否需要更新 PDM 缓冲区
+ *          方向变化或 duty 变化超过死区阈值时返回 true，
+ *          避免 PID 小幅抖动触发频繁重填 1000 点表。
+ * @param   dir  新方向
+ * @param   duty 新占空比
+ * @return  true 需要更新
+ */
+static bool _Motor5PdmShouldUpdate(enum MotorDir dir, uint16_t duty) {
+    if (motor5_pdm_dir_ != dir) {
+        return true;
+    }
+
+    // PID 输出的小幅抖动没有必要重填 1000 点表。
+    uint16_t diff = (duty > motor5_pdm_duty_) ? (duty - motor5_pdm_duty_) : (motor5_pdm_duty_ - duty);
+    return diff > MOTOR5_PDM_DUTY_DEADBAND;
+}
+
+/**
+ * @brief   设置电机 5 PDM 输出
+ *          Stop/0 duty 时停止 DMA；否则按需重填缓冲区后启动 DMA。
+ *          运行中 duty 变化只重填 buffer，不重启 DMA，避免相位反复归零。
+ * @param   dir  电机方向
+ * @param   duty 占空比 0~999
+ */
+static void _Motor5SetPdm(enum MotorDir dir, uint16_t duty) {
+    if (dir == kMotorDir_Stop || duty == 0) {
+        motor5_pdm_dir_ = dir;
+        motor5_pdm_duty_ = duty;
+        _Motor5StopPdm();
+        return;
+    }
+
+    if (_Motor5PdmShouldUpdate(dir, duty)) {
+        _Motor5FillPdmBuffer(dir, duty);
+        motor5_pdm_dir_ = dir;
+        motor5_pdm_duty_ = duty;
+    }
+
+    _Motor5StartPdm();
+}
+
+/**
+ * @brief   初始化电机 5 PDM DMA 通道 (DMA1_Channel5)
+ *          配置为 TIM1 update 触发、内存→GPIOB->BSHR、循环模式。
+ */
+static void _InitMotor5PdmDma(void) {
+    DMA_InitTypeDef dma;
+
+    _Motor5FillPdmBuffer(kMotorDir_Stop, 0);
+    motor5_pdm_dir_ = kMotorDir_Stop;
+    motor5_pdm_duty_ = 0;
+    motor5_pdm_running_ = false;
+
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+
+    DMA_DeInit(DMA1_Channel5);
+    dma.DMA_PeripheralBaseAddr = (uint32_t)&GPIOB->BSHR;
+    dma.DMA_MemoryBaseAddr = (uint32_t)motor5_pdm_dma_buf_;
+    dma.DMA_DIR = DMA_DIR_PeripheralDST;
+    dma.DMA_BufferSize = MOTOR5_PDM_STEPS;
+    dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    dma.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Word;
+    dma.DMA_MemoryDataSize = DMA_MemoryDataSize_Word;
+    dma.DMA_Mode = DMA_Mode_Circular;
+    dma.DMA_Priority = DMA_Priority_Medium;
+    dma.DMA_M2M = DMA_M2M_Disable;
+    DMA_Init(DMA1_Channel5, &dma);
+
+    DMA_ClearFlag(DMA1_FLAG_GL5);
+    _Motor5StopPdm();
+}
 
 /**
  * @brief   初始化 TIM1~TIM4 为 PWM 输出，电机 3 配置为 GPIO 控制
@@ -151,6 +331,7 @@ void _InitPwm(void) {
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &gpio);
     GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
+    _InitMotor5PdmDma();
 }
 
 /**
@@ -284,20 +465,7 @@ void MotorHw_SetPwm(uint8_t ch, enum MotorDir dir, uint16_t duty) {
             TIM_SetCompare1(TIM1, (dir == kMotorDir_Reverse || dir == kMotorDir_Brake) ? duty : 0);
             break;
         case kMotorIdx_5: /* GPIO PB14=IN1, PB15=IN2 */
-            if (dir == kMotorDir_Reverse) {
-                GPIO_SetBits(GPIOB, GPIO_Pin_14);
-                GPIO_ResetBits(GPIOB, GPIO_Pin_15);
-            }
-            else if (dir == kMotorDir_Forward) {
-                GPIO_ResetBits(GPIOB, GPIO_Pin_14);
-                GPIO_SetBits(GPIOB, GPIO_Pin_15);
-            }
-            else if (dir == kMotorDir_Brake) {
-                GPIO_SetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
-            }
-            else {
-                GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
-            }
+            _Motor5SetPdm(dir, duty);
             break;
         case kMotorIdx_6: /* TIM2 CH4=IN1, CH3=IN2 */
             TIM_SetCompare4(TIM2, (dir == kMotorDir_Forward || dir == kMotorDir_Brake) ? duty : 0);
