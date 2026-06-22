@@ -71,7 +71,7 @@ main.c
        ├─ _MotorControl()       ── 控制状态机 (Idle→AdcStart→AdcWait→Control)
        │    ├─ Motor_StartAdcConversion()  ── bsp/motor_hw.c
        │    ├─ Motor_RunControlLoop()      ── app/motor.c (PID + PWM)
-       │    └─ Motor_OnAdcReady()          ── 回调 → MidiCC_UpdateAdc
+       │    └─ Motor_OnFilterAdcReady()          ── 回调 → MidiCC_UpdateAdc
        ├─ Motor_SendStatus()   ── USB HID1 上报 8 路 ADC/目标/占空比
        ├─ Motor_ProcessCommand()  ── USB HID1 命令接收 (目标/PID/Bias/Max)
        ├─ MidiCC_Control()     ── MIDI 发送状态机 (滤波/量化/CC 发送)

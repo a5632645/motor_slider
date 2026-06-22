@@ -17,7 +17,7 @@
 #define CTRL_SETTLE_MS 5
 
 /** @brief 静止判定阈值，相邻控制周期 ADC 变化量 ≤ 该值视为静止 */
-#define CTRL_STILL_THRESHOLD 10
+#define CTRL_STILL_THRESHOLD 4
 
 /** @brief 闭环超时 (ms)，超过此时间未到达目标则停止电机 */
 #define CTRL_TIMEOUT_MS 1000
@@ -42,7 +42,7 @@
 // ------------------------------------------------------------
 
 /** @brief 默认 PID 增益 (Motor_InitControl 中使用的初始值) */
-#define PID_DEFAULT_KP 0.03f
+#define PID_DEFAULT_KP 0.05f
 #define PID_DEFAULT_KI 0.0001f
 
 /** @brief PID 积分限幅，防止积分饱和 */
@@ -74,6 +74,10 @@
 /** @brief MIDI ADC 转 CC 的边界死区，单位 ADC */
 #define MIDI_CC_BOUNDARY_GAP_ADC 12
 
-#define MIDI_TX_FIFO_SIZE 128
+/** @brief 发送后接收抑制时间 (ms)，防止 MIDI 回环反馈 */
+#define CONFIG_MIDI_SEND_GAP_TIME 10
 
-#define MIDI_ADC_FILTER_SHIFT 3
+/** @brief 接收后发送抑制时间 (ms)，等待电机稳定 */
+#define CONFIG_MIDI_RECEIVE_GAP_TIME 50
+
+#define MIDI_TX_FIFO_SIZE 128

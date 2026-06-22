@@ -4,6 +4,7 @@
 
 #include "app/motor.h"
 #include "config.h"
+#include "tick.h"
 #include "usb/usb_impl.h"
 
 // ------------------------------------------------------------
@@ -28,13 +29,13 @@ const struct MidiCcMapping kMidiCcMap[kMotorIdx_Count] = {
 enum MidiState {
     kMidiState_WaitAdc,
     kMidiState_Filter,
-    kMidiState_PrepareSend,
     kMidiState_Send,
 };
 
 enum MidiRxHoldState {
     kMidiRxHold_None,
     kMidiRxHold_WaitMotorStop,
+    kMidiRxHold_WaitReceiveGap,
     kMidiRxHold_CaptureStopCc,
     kMidiRxHold_WaitUserMove,
 };
@@ -54,20 +55,14 @@ struct MidiAdcSampler {
 };
 
 struct MidiQuantizer {
-    bool filter_ready_;
-    uint32_t filtered_adc_q8_[kMotorIdx_Count];
-
     bool quantized_ready_;
     uint8_t quantized_cc_[kMotorIdx_Count];
 };
 
-struct MidiTxGuard {
+struct MidiTxDebounce {
     uint8_t last_sent_cc_[kMotorIdx_Count];
     uint8_t candidate_cc_[kMotorIdx_Count];
     uint8_t candidate_count_[kMotorIdx_Count];
-
-    uint8_t pending_cc_[kMotorIdx_Count];
-    uint8_t pending_mask_;
 };
 
 struct MidiRxHold {
@@ -77,41 +72,22 @@ struct MidiRxHold {
 
 struct MidiCcTx {
     enum MidiState state_;
-    uint8_t send_idx_;
-    uint8_t packet_[4];
+    uint8_t pending_cc_[kMotorIdx_Count];
+    uint8_t pending_mask_;
 };
 
 static struct MidiAdcSampler midi_adc_;
 static struct MidiQuantizer midi_quantizer_;
-static struct MidiTxGuard midi_tx_guard_;
+static struct MidiTxDebounce midi_tx_debounce_;
 static struct MidiRxHold midi_rx_hold_;
 static struct MidiCcTx midi_tx_;
+
+static uint32_t midi_send_gap_tick_begin_[kMotorIdx_Count];
+static uint32_t midi_receive_gap_tick_begin_[kMotorIdx_Count];
 
 // ------------------------------------------------------------
 // private
 // ------------------------------------------------------------
-
-static void _MidiReceiveCc(uint8_t idx, uint8_t cc_value, uint16_t target_adc) {
-    if (idx >= kMotorIdx_Count) {
-        return;
-    }
-
-    bool is_same_sent = (cc_value == midi_tx_guard_.last_sent_cc_[idx]);
-    bool is_same_pending = ((midi_tx_guard_.pending_mask_ & (1 << idx)) && cc_value == midi_tx_guard_.pending_cc_[idx]);
-
-    midi_tx_guard_.pending_mask_ &= ~(1 << idx);
-    midi_rx_hold_.cc_[idx] = cc_value;
-    midi_rx_hold_.state_[idx] = kMidiRxHold_WaitMotorStop;
-    midi_tx_guard_.last_sent_cc_[idx] = cc_value;
-    midi_quantizer_.quantized_cc_[idx] = cc_value;
-    midi_tx_guard_.candidate_cc_[idx] = cc_value;
-    midi_tx_guard_.candidate_count_[idx] = 0;
-
-    if (is_same_sent || is_same_pending) {
-        return;
-    }
-    Motor_SetTarget(idx, target_adc);
-}
 
 static uint16_t _MidiCcToTargetAdc(uint8_t cc_value) {
     uint32_t target = ((uint32_t)(cc_value * 2 + 1) * 4095) / (2 * 127);
@@ -119,6 +95,32 @@ static uint16_t _MidiCcToTargetAdc(uint8_t cc_value) {
         target = 4095;
     }
     return (uint16_t)target;
+}
+
+static void _MidiReceiveCc(uint8_t idx, uint8_t cc_value) {
+    if (Tick_GetMs() - midi_send_gap_tick_begin_[idx] <= CONFIG_MIDI_SEND_GAP_TIME) {
+        return;
+    }
+
+    bool is_same_sent = (cc_value == midi_tx_debounce_.last_sent_cc_[idx]);
+    bool is_same_pending = ((midi_tx_.pending_mask_ & (1 << idx)) && cc_value == midi_tx_.pending_cc_[idx]);
+
+    midi_tx_.pending_mask_ &= ~(1 << idx);
+    midi_rx_hold_.cc_[idx] = cc_value;
+    midi_rx_hold_.state_[idx] = kMidiRxHold_WaitMotorStop;
+    midi_tx_debounce_.last_sent_cc_[idx] = cc_value;
+    midi_quantizer_.quantized_cc_[idx] = cc_value;
+    midi_tx_debounce_.candidate_cc_[idx] = cc_value;
+    midi_tx_debounce_.candidate_count_[idx] = 0;
+    midi_receive_gap_tick_begin_[idx] = Tick_GetMs();
+
+    if (is_same_sent || is_same_pending) {
+        return;
+    }
+
+    // CC (0-127) → ADC (0-4095), 取量化区间中心
+    uint16_t target_adc = _MidiCcToTargetAdc(cc_value);
+    Motor_SetTarget(idx, target_adc);
 }
 
 // 将 ADC 值量化为 MIDI CC，并在 CC 边界保留死区。
@@ -164,36 +166,6 @@ static bool _MidiShouldUpdateCc(uint8_t last_cc, uint8_t next_cc, uint16_t filte
     return next_cc != last_cc;
 }
 
-// 更新 MIDI 专用 ADC IIR 滤波器。
-// 控制环使用独立的低延迟滤波，本函数只服务 MIDI CC 上报路径。
-static uint16_t _MidiFilterAdc(uint8_t idx, uint16_t raw_adc) {
-    uint32_t raw_q8 = (uint32_t)raw_adc << 8;
-
-    if (!midi_quantizer_.filter_ready_) {
-        midi_quantizer_.filtered_adc_q8_[idx] = raw_q8;
-        return raw_adc;
-    }
-
-    uint32_t filtered_q8 = midi_quantizer_.filtered_adc_q8_[idx];
-    if (raw_q8 >= filtered_q8) {
-        uint32_t step = (raw_q8 - filtered_q8) >> MIDI_ADC_FILTER_SHIFT;
-        if (step == 0 && raw_q8 != filtered_q8) {
-            step = 1;
-        }
-        filtered_q8 += step;
-    }
-    else {
-        uint32_t step = (filtered_q8 - raw_q8) >> MIDI_ADC_FILTER_SHIFT;
-        if (step == 0) {
-            step = 1;
-        }
-        filtered_q8 -= step;
-    }
-
-    midi_quantizer_.filtered_adc_q8_[idx] = filtered_q8;
-    return (uint16_t)((filtered_q8 + 128) >> 8);
-}
-
 static void _MidiBuildCcPacket(uint8_t idx, uint8_t cc_value, uint8_t packet[4]) {
     packet[0] = MIDI_CIN_CC | (MIDI_DEFAULT_CHANNEL & 0x0F);
     packet[1] = 0xB0 | (MIDI_DEFAULT_CHANNEL & 0x0F);
@@ -201,29 +173,19 @@ static void _MidiBuildCcPacket(uint8_t idx, uint8_t cc_value, uint8_t packet[4])
     packet[3] = cc_value;
 }
 
-static bool _MidiSelectPendingChannel(void) {
-    for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
-        if (midi_tx_guard_.pending_mask_ & (1 << i)) {
-            midi_tx_.send_idx_ = i;
-            return true;
-        }
-    }
-    return false;
-}
-
 // 同一个候选 CC 需要连续出现 MIDI_CC_CONFIRM_COUNT 次才允许发送。
 static bool _MidiConfirmCc(uint8_t idx, uint8_t cc_value) {
-    if (midi_tx_guard_.candidate_cc_[idx] != cc_value) {
-        midi_tx_guard_.candidate_cc_[idx] = cc_value;
-        midi_tx_guard_.candidate_count_[idx] = 1;
+    if (midi_tx_debounce_.candidate_cc_[idx] != cc_value) {
+        midi_tx_debounce_.candidate_cc_[idx] = cc_value;
+        midi_tx_debounce_.candidate_count_[idx] = 1;
         return MIDI_CC_CONFIRM_COUNT <= 1;
     }
 
-    if (midi_tx_guard_.candidate_count_[idx] < MIDI_CC_CONFIRM_COUNT) {
-        midi_tx_guard_.candidate_count_[idx]++;
+    if (midi_tx_debounce_.candidate_count_[idx] < MIDI_CC_CONFIRM_COUNT) {
+        midi_tx_debounce_.candidate_count_[idx]++;
     }
 
-    return midi_tx_guard_.candidate_count_[idx] >= MIDI_CC_CONFIRM_COUNT;
+    return midi_tx_debounce_.candidate_count_[idx] >= MIDI_CC_CONFIRM_COUNT;
 }
 
 // 执行 MIDI RX 后的发送抑制状态机。
@@ -235,21 +197,27 @@ static bool _MidiRxHoldAllowsSend(uint8_t idx, uint8_t cc_value) {
 
         case kMidiRxHold_WaitMotorStop:
             if (!Motor_IsMoving(idx)) {
+                midi_rx_hold_.state_[idx] = kMidiRxHold_WaitReceiveGap;
+            }
+            return false;
+
+        case kMidiRxHold_WaitReceiveGap:
+            if (Tick_GetMs() - midi_receive_gap_tick_begin_[idx] > CONFIG_MIDI_RECEIVE_GAP_TIME) {
                 midi_rx_hold_.state_[idx] = kMidiRxHold_CaptureStopCc;
             }
             return false;
 
         case kMidiRxHold_CaptureStopCc:
             midi_rx_hold_.cc_[idx] = cc_value;
-            midi_tx_guard_.candidate_cc_[idx] = cc_value;
-            midi_tx_guard_.candidate_count_[idx] = 0;
+            midi_tx_debounce_.candidate_cc_[idx] = cc_value;
+            midi_tx_debounce_.candidate_count_[idx] = 0;
             midi_rx_hold_.state_[idx] = kMidiRxHold_WaitUserMove;
             return false;
 
         case kMidiRxHold_WaitUserMove:
             if (cc_value == midi_rx_hold_.cc_[idx]) {
-                midi_tx_guard_.candidate_cc_[idx] = cc_value;
-                midi_tx_guard_.candidate_count_[idx] = 0;
+                midi_tx_debounce_.candidate_cc_[idx] = cc_value;
+                midi_tx_debounce_.candidate_count_[idx] = 0;
                 return false;
             }
 
@@ -269,27 +237,45 @@ static bool _MidiRxHoldAllowsSend(uint8_t idx, uint8_t cc_value) {
 // ------------------------------------------------------------
 
 void MidiCC_Init(void) {
-    midi_quantizer_.filter_ready_ = false;
-    midi_quantizer_.quantized_ready_ = false;
-    midi_adc_.raw_adc_ready_ = false;
-    midi_tx_guard_.pending_mask_ = 0;
-    midi_tx_.send_idx_ = 0;
+    // ---- TX 状态机 ----
     midi_tx_.state_ = kMidiState_WaitAdc;
+    midi_tx_.pending_mask_ = 0;
+
+    // ---- MidiTxDebounce ----
     for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
-        midi_tx_guard_.last_sent_cc_[i] = 0xFF;
+        midi_tx_debounce_.last_sent_cc_[i] = 0xFF;
+        midi_tx_debounce_.candidate_cc_[i] = 0xFF;
+        midi_tx_debounce_.candidate_count_[i] = 0;
+    }
+
+    // ---- MidiQuantizer ----
+    midi_quantizer_.quantized_ready_ = false;
+    for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
         midi_quantizer_.quantized_cc_[i] = 0;
-        midi_tx_guard_.candidate_cc_[i] = 0xFF;
-        midi_tx_guard_.candidate_count_[i] = 0;
+    }
+
+    // ---- MidiRxHold ----
+    for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
         midi_rx_hold_.cc_[i] = 0xFF;
         midi_rx_hold_.state_[i] = kMidiRxHold_None;
+    }
+
+    // ---- MidiAdcSampler ----
+    midi_adc_.raw_adc_ready_ = false;
+    midi_adc_.avg_count_ = 0;
+    for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
         midi_adc_.sum_[i] = 0;
         midi_adc_.min_[i] = 0;
         midi_adc_.max_[i] = 0;
-        midi_quantizer_.filtered_adc_q8_[i] = 0;
-        midi_tx_guard_.pending_cc_[i] = 0;
         midi_adc_.raw_adc_[i] = 0;
     }
-    midi_adc_.avg_count_ = 0;
+
+    // ---- MidiCcTx ----
+    for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
+        midi_tx_.pending_cc_[i] = 0;
+        midi_send_gap_tick_begin_[i] = 0;
+        midi_receive_gap_tick_begin_[i] = 0;
+    }
 }
 
 void MidiCC_TryTxCC(void) {
@@ -301,47 +287,50 @@ void MidiCC_TryTxCC(void) {
         } break;
 
         case kMidiState_Filter: {
-            midi_tx_guard_.pending_mask_ = 0;
+            midi_tx_.pending_mask_ = 0;
             for (uint8_t i = 0; i < kMotorIdx_Count; ++i) {
-                uint16_t filtered_adc = _MidiFilterAdc(i, midi_adc_.raw_adc_[i]);
-                uint8_t cc_value = _MidiAdcToCc(i, filtered_adc);
+                uint16_t adc_val = midi_adc_.raw_adc_[i];
+                uint8_t cc_value = _MidiAdcToCc(i, adc_val);
 
                 if (!_MidiRxHoldAllowsSend(i, cc_value)) {
                     continue;
                 }
 
-                if (!Motor_IsMoving(i) && _MidiShouldUpdateCc(midi_tx_guard_.last_sent_cc_[i], cc_value, filtered_adc)
+                if (!Motor_IsMoving(i) && _MidiShouldUpdateCc(midi_tx_debounce_.last_sent_cc_[i], cc_value, adc_val)
                     && _MidiConfirmCc(i, cc_value)) {
-                    midi_tx_guard_.pending_cc_[i] = cc_value;
-                    midi_tx_guard_.pending_mask_ |= (1 << i);
+                    midi_tx_.pending_cc_[i] = cc_value;
+                    midi_tx_.pending_mask_ |= (1 << i);
                 }
             }
-            midi_quantizer_.filter_ready_ = true;
             midi_quantizer_.quantized_ready_ = true;
-            midi_tx_.state_ = kMidiState_PrepareSend;
-        } break;
-
-        case kMidiState_PrepareSend: {
-            if (!_MidiSelectPendingChannel()) {
-                midi_adc_.raw_adc_ready_ = false;
-                midi_tx_.state_ = kMidiState_WaitAdc;
-                break;
-            }
-            _MidiBuildCcPacket(midi_tx_.send_idx_, midi_tx_guard_.pending_cc_[midi_tx_.send_idx_], midi_tx_.packet_);
             midi_tx_.state_ = kMidiState_Send;
         } break;
 
         case kMidiState_Send: {
+            if (midi_tx_.pending_mask_ == 0) {
+                midi_adc_.raw_adc_ready_ = false;
+                midi_tx_.state_ = kMidiState_WaitAdc;
+                break;
+            }
+
             if (!UsbImpl_HidDebug_IsConnected()) {
                 midi_adc_.raw_adc_ready_ = false;
                 midi_tx_.state_ = kMidiState_WaitAdc;
                 break;
             }
 
-            if (UsbImpl_Midi_Push(midi_tx_.packet_)) {
-                midi_tx_guard_.last_sent_cc_[midi_tx_.send_idx_] = midi_tx_guard_.pending_cc_[midi_tx_.send_idx_];
-                midi_tx_guard_.pending_mask_ &= ~(1 << midi_tx_.send_idx_);
-                midi_tx_.state_ = kMidiState_PrepareSend;
+            uint32_t pending_idx = __builtin_ctz(midi_tx_.pending_mask_);
+            if (Tick_GetMs() - midi_receive_gap_tick_begin_[pending_idx] <= CONFIG_MIDI_RECEIVE_GAP_TIME) {
+                midi_tx_.pending_mask_ &= ~(1 << pending_idx);
+                break;
+            }
+
+            uint8_t packet_[4];
+            _MidiBuildCcPacket(pending_idx, midi_tx_.pending_cc_[pending_idx], packet_);
+            if (UsbImpl_Midi_Push(packet_)) {
+                midi_tx_debounce_.last_sent_cc_[pending_idx] = midi_tx_.pending_cc_[pending_idx];
+                midi_tx_.pending_mask_ &= ~(1 << pending_idx);
+                midi_send_gap_tick_begin_[pending_idx] = Tick_GetMs();
             }
         } break;
     }
@@ -361,17 +350,16 @@ void MidiCC_ProcessRx(void) {
         uint8_t cc_value = buf[i + 3];
 
         // 仅处理 CC 消息 (0xB0)
-        if ((status & 0xF0) != 0xB0)
+        if ((status & 0xF0) != 0xB0) {
             continue;
+        }
 
         uint8_t channel = status & 0x0F;
 
         // 匹配映射表
-        for (int j = 0; j < kMotorIdx_Count; j++) {
+        for (uint8_t j = 0; j < kMotorIdx_Count; j++) {
             if (kMidiCcMap[j].channel == channel && kMidiCcMap[j].cc_num == cc_num) {
-                // CC (0-127) → ADC (0-4095), 取量化区间中心
-                uint16_t target_adc = _MidiCcToTargetAdc(cc_value);
-                _MidiReceiveCc(j, cc_value, target_adc);
+                _MidiReceiveCc(j, cc_value);
                 break;
             }
         }

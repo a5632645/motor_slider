@@ -104,4 +104,6 @@ bool Motor_IsMoving(uint8_t ch);
 
 extern void Motor_OnActiveChanged(uint8_t ch, bool active);
 
-extern void Motor_OnAdcReady(uint16_t raw_adc[kMotorIdx_Count]);
+extern void Motor_OnRawAdcReady(uint16_t raw_adc[kMotorIdx_Count]);
+
+extern void Motor_OnFilterAdcReady(uint16_t raw_adc[kMotorIdx_Count]);

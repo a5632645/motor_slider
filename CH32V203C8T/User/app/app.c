@@ -59,7 +59,9 @@ static void _MotorControl(void) {
 
 void Motor_OnActiveChanged(uint8_t ch, bool active) {}
 
-void Motor_OnAdcReady(uint16_t raw_adc[kMotorIdx_Count]) {
+void Motor_OnRawAdcReady(uint16_t raw_adc[kMotorIdx_Count]) {}
+
+void Motor_OnFilterAdcReady(uint16_t raw_adc[kMotorIdx_Count]) {
     MidiCC_UpdateAdc(raw_adc);
 }
 
@@ -78,8 +80,8 @@ void App_Loop(void) {
         Motor_SendStatus();
         Motor_ProcessCommand();
 
-        MidiCC_TryTxCC();
         MidiCC_ProcessRx();
+        MidiCC_TryTxCC();
 
         UsbImpl_Midi_Poll();
         UsbImpl_HidDebug_Flush();

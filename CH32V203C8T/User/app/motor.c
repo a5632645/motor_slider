@@ -80,12 +80,19 @@ bool Motor_IsAdcReady(void) {
 void Motor_RunControlLoop(void) {
     uint16_t raw_adc[kMotorIdx_Count];
     uint32_t now_tick = Tick_Get();
+
     MotorHw_GetAdcValue(raw_adc);
-    Motor_OnAdcReady(raw_adc);
+    Motor_OnRawAdcReady(raw_adc);
+    {
+        uint16_t filter_adc[kMotorIdx_Count];
+        for (int i = 0; i < kMotorIdx_Count; ++i) {
+            motor_states_[i].current_adc_ = _Motor_FilterAdc(&motor_states_[i], raw_adc[i]);
+            filter_adc[i] = motor_states_[i].current_adc_;
+        }
+        Motor_OnFilterAdcReady(filter_adc);
+    }
 
     for (int i = 0; i < kMotorIdx_Count; i++) {
-        motor_states_[i].current_adc_ = _Motor_FilterAdc(&motor_states_[i], raw_adc[i]);
-
         // 非活跃电机：跳过，PWM 保持 0
         if (!motor_states_[i].active_)
             continue;
