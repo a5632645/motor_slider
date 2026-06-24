@@ -9,15 +9,16 @@
 有7个推子含有原生PWM控制，另一个使用TIM+DMA写GPIO的形式模拟PWM  
 电机控制器在小范围移动会产生可听的来回移动噪声  
 MIDI CC目前固定为CC0~CC7  
-> [!NOTE]
-> 接下来的面板使用M3螺丝时选择平头的，否则midi cc的范围会变成 2~124
 
 ## 额外内容
 [购买电动线性电位器](https://item.taobao.com/item.htm?id=904405285742)
 
 > 你说外壳，建议自己设计
 
-立创面板源码，本人用的2.8mm亚克力仍然会被压弯
+> [!NOTE]
+> 接下来的面板使用M3螺丝时选择平头的并且面板厚度不建议过厚，否则midi cc的范围会变成 2~124
+
+立创面板源码，本人用的2.8mm(**别弄那么厚**)亚克力仍然会被压弯
 ```
 {"type":"DOCHEAD"}||{"docType":"PANEL","client":"7755df130da93361","uuid":"ee90faf011b0bf49","updateTime":1781689268650,"version":"1781689268650"}|
 {"type":"CANVAS","ticket":1,"id":"CANVAS"}||{"material":"acrylic","thickness":"2.0mm","print":"Ahead Side","craft":"Transparent","desc":"","coverColor":"white","width":"393mm","height":"579mm","originX":0,"originY":0,"orderWidth":"189.99mm","orderHeight":"151.89mm"}|
